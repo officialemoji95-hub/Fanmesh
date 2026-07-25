@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: fanmesh
+    runtime: node
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production

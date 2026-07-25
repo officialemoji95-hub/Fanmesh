@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="FanMesh unifies consented fan relationships and turns them into useful audience intelligence.">
+    <title>FanMesh — Own the relationship</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a class="brand" href="#top" aria-label="FanMesh dashboard">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span>Fan<span>Mesh</span></span>
+        </a>
+
+        <nav class="nav" aria-label="Primary navigation">
+          <p class="eyebrow">Workspace</p>
+          <a class="active" href="#overview"><span class="nav-icon">⌁</span> Overview</a>
+          <a href="#audience"><span class="nav-icon">◎</span> Audience <b>5.8k</b></a>
+          <a href="#campaign"><span class="nav-icon">↗</span> Activations</a>
+          <a href="#connections"><span class="nav-icon">⌘</span> Connections</a>
+          <a href="/api/v1/openapi.json" target="_blank"><span class="nav-icon">{ }</span> Developer API</a>
+        </nav>
+
+        <section class="capture-card">
+          <span class="pulse-dot"></span>
+          <p>Fan capture is live</p>
+          <strong>32 new identities</strong>
+          <span>in the last 7 days</span>
+        </section>
+
+        <div class="profile">
+          <span class="avatar">V</span>
+          <span><strong>Vero</strong><small>Creator workspace</small></span>
+          <button aria-label="Open workspace menu">•••</button>
+        </div>
+      </aside>
+
+      <main id="top">
+        <header class="topbar">
+          <button class="mobile-menu" aria-label="Open navigation">☰</button>
+          <div>
+            <p class="breadcrumb">FanMesh / <span>Overview</span></p>
+            <h1>Your audience, finally visible.</h1>
+          </div>
+          <div class="top-actions">
+            <span class="demo-pill"><i></i> Demo data</span>
+            <button class="button secondary" data-toast="Connection flow will be enabled with platform OAuth.">＋ Connect source</button>
+            <button class="button primary" data-scroll="campaign">Plan activation ↗</button>
+          </div>
+        </header>
+
+        <section class="notice" aria-label="Product principle">
+          <span class="notice-icon">✦</span>
+          <div>
+            <strong>Stop renting your reach.</strong>
+            <p>FanMesh converts scattered platform activity into consented, direct fan relationships you can understand and activate.</p>
+          </div>
+          <button aria-label="Dismiss notice">×</button>
+        </section>
+
+        <section class="metrics" id="overview" aria-label="Audience metrics">
+          <article class="metric-card">
+            <div class="metric-label"><span>Potential audience</span><i class="metric-icon lavender">◎</i></div>
+            <strong id="total-followers">118,000</strong>
+            <p><b class="positive">4 platforms</b> connected</p>
+          </article>
+          <article class="metric-card">
+            <div class="metric-label"><span>Identified fans</span><i class="metric-icon green">⌁</i></div>
+            <strong id="identified-fans">5,842</strong>
+            <p><b class="positive">4.95%</b> identity coverage</p>
+          </article>
+          <article class="metric-card">
+            <div class="metric-label"><span>Direct connections</span><i class="metric-icon amber">↗</i></div>
+            <strong id="direct-connections">1,926</strong>
+            <p><b class="positive">32.97%</b> of identified fans</p>
+          </article>
+          <article class="metric-card risk">
+            <div class="metric-label"><span>Reach health</span><i class="metric-icon coral">!</i></div>
+            <strong id="view-rate">0.11%</strong>
+            <p><b>127</b> average views</p>
+          </article>
+        </section>
+
+        <section class="dashboard-grid">
+          <article class="panel reach-panel">
+            <div class="panel-heading">
+              <div><p class="eyebrow">Reach gap</p><h2>Followers ≠ reachable fans</h2></div>
+              <span class="status danger">Action needed</span>
+            </div>
+            <p class="panel-copy">Your audience lives behind platform gates. This view shows how much of that relationship you currently control.</p>
+            <div class="reach-bars">
+              <div>
+                <span><b>Total followers</b><strong>118,000</strong></span>
+                <i><em class="bar followers"></em></i>
+              </div>
+              <div>
+                <span><b>Identified</b><strong>5,842</strong></span>
+                <i><em class="bar identified"></em></i>
+              </div>
+              <div>
+                <span><b>Directly reachable</b><strong>1,926</strong></span>
+                <i><em class="bar reachable"></em></i>
+              </div>
+            </div>
+            <div class="panel-action">
+              <span><i>↑</i><b>Next best move</b><small>Launch a fan-only early-access capture page</small></span>
+              <button class="text-button" data-toast="Capture-page builder is planned for the next milestone.">Build page →</button>
+            </div>
+          </article>
+
+          <article class="panel orbit-panel" id="connections">
+            <div class="panel-heading">
+              <div><p class="eyebrow">Identity graph</p><h2>One fan. Every signal.</h2></div>
+              <button class="icon-button" data-toast="Graph settings will be available after real data connections.">•••</button>
+            </div>
+            <div class="orbit-wrap" aria-label="Fan identity orbit visualization">
+              <div class="orbit orbit-outer">
+                <span class="platform-node instagram" title="Instagram">ig</span>
+                <span class="platform-node youtube" title="YouTube">▶</span>
+                <div class="orbit orbit-middle">
+                  <span class="platform-node spotify" title="Spotify">≋</span>
+                  <span class="platform-node tiktok" title="TikTok">♪</span>
+                  <div class="orbit orbit-inner">
+                    <div class="fan-core"><span>5.8k</span><small>known fans</small></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p class="orbit-caption"><span></span> 1,214 identities appear on 2+ platforms</p>
+          </article>
+        </section>
+
+        <section class="panel recommendations">
+          <div class="panel-heading">
+            <div><p class="eyebrow">FanMesh intelligence</p><h2>Three moves worth making now</h2></div>
+            <span class="updated">Updated just now</span>
+          </div>
+          <div class="recommendation-list" id="recommendations">
+            <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
+          </div>
+        </section>
+
+        <section class="panel audience-panel" id="audience">
+          <div class="panel-heading table-heading">
+            <div><p class="eyebrow">Audience intelligence</p><h2>Your highest-intent fans</h2></div>
+            <div class="table-actions">
+              <label class="search"><span>⌕</span><input id="fan-search" type="search" placeholder="Search fans" aria-label="Search fans"></label>
+              <button class="button secondary" data-toast="CSV export will be enabled after authentication and persistence.">Export</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Fan</th><th>Connected on</th><th>Score</th><th>Relationship</th><th>Last signal</th><th></th></tr></thead>
+              <tbody id="fan-table"><tr><td colspan="6" class="loading">Loading audience…</td></tr></tbody>
+            </table>
+          </div>
+          <div class="table-footer"><span>Showing prototype records</span><button data-toast="Pagination will activate with the production database.">View all audience →</button></div>
+        </section>
+
+        <section class="campaign-grid" id="campaign">
+          <article class="panel campaign-builder">
+            <div class="panel-heading">
+              <div><p class="eyebrow">Activation planner</p><h2>Turn attention into momentum</h2></div>
+              <span class="status good">Compliant by design</span>
+            </div>
+            <p class="panel-copy">Build a sequence for the fans most likely to care—across channels where they have chosen to hear from you.</p>
+            <form id="campaign-form">
+              <label>Goal<select name="objective"><option value="release">Release music or content</option><option value="sales">Drive sales</option><option value="community">Grow community</option></select></label>
+              <label>What are you sharing?<input name="contentType" value="new single" maxlength="80"></label>
+              <button class="button primary" type="submit">Generate activation plan ↗</button>
+            </form>
+          </article>
+          <article class="panel sequence-panel" aria-live="polite">
+            <div class="empty-sequence" id="campaign-result">
+              <span class="sequence-icon">↗</span>
+              <h3>Your activation sequence will appear here</h3>
+              <p>Choose a goal and FanMesh will recommend an audience, channels, timing, and guardrail.</p>
+            </div>
+          </article>
+        </section>
+
+        <footer>
+          <span class="brand mini"><span class="brand-mark"><i></i><i></i><i></i></span>Fan<span>Mesh</span></span>
+          <p>Creator-owned relationships. No fake engagement. No secret scraping.</p>
+          <a href="/api/v1/openapi.json">API schema ↗</a>
+        </footer>
+      </main>
+    </div>
+    <div class="toast" role="status" aria-live="polite"></div>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
