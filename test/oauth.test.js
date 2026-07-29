@@ -1,0 +1,176 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { createOAuthService, createTokenVault, OAuthError, STATE_COOKIE } from "../src/oauth.js";
+
+const encryptionKey = Buffer.alloc(32, 7).toString("base64");
+
+function response(payload, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    async text() { return JSON.stringify(payload); },
+  };
+}
+
+function cookieHeader(setCookie) {
+  return setCookie.split(";")[0];
+}
+
+test("token vault encrypts credential payloads and detects tampering", () => {
+  const vault = createTokenVault({ OAUTH_TOKEN_ENCRYPTION_KEY: encryptionKey });
+  const sealed = vault.seal({ accessToken: "never-plaintext" });
+  assert.equal(sealed.includes("never-plaintext"), false);
+  assert.deepEqual(vault.open(sealed), { accessToken: "never-plaintext" });
+  const parts = sealed.split(".");
+  parts[3] = `${parts[3][0] === "A" ? "B" : "A"}${parts[3].slice(1)}`;
+  assert.throws(() => vault.open(parts.join(".")), OAuthError);
+});
+
+test("provider catalog activates only fully configured OAuth apps", () => {
+  const service = createOAuthService({
+    environment: {
+      NODE_ENV: "production",
+      APP_BASE_URL: "https://fanmesh.example",
+      OAUTH_TOKEN_ENCRYPTION_KEY: encryptionKey,
+      TIKTOK_CLIENT_KEY: "client-key",
+      TIKTOK_CLIENT_SECRET: "client-secret",
+    },
+  });
+  const tiktok = service.catalog().find((provider) => provider.platform === "tiktok");
+  const meta = service.catalog().find((provider) => provider.platform === "meta");
+  assert.equal(tiktok.configured, true);
+  assert.equal(tiktok.callbackUrl, "https://fanmesh.example/api/v1/oauth/tiktok/callback");
+  assert.equal(meta.configured, false);
+  assert.equal(meta.connectUrl, null);
+});
+
+test("TikTok callback verifies state, encrypts tokens, and stores a safe account summary", async () => {
+  let savedConnection;
+  const now = Date.parse("2026-07-29T12:00:00.000Z");
+  const service = createOAuthService({
+    now: () => now,
+    environment: {
+      NODE_ENV: "production",
+      APP_BASE_URL: "https://fanmesh.example",
+      OAUTH_TOKEN_ENCRYPTION_KEY: encryptionKey,
+      TIKTOK_CLIENT_KEY: "client-key",
+      TIKTOK_CLIENT_SECRET: "client-secret",
+    },
+    workspaceStore: {
+      async saveSourceConnection(user, accessToken, connection) {
+        assert.equal(user.id, "user-1");
+        assert.equal(accessToken, "supabase-token");
+        savedConnection = connection;
+        return { status: connection.status };
+      },
+    },
+    async fetchImpl(url, options = {}) {
+      if (String(url).includes("/v2/oauth/token/")) {
+        assert.equal(options.method, "POST");
+        return response({ access_token: "tiktok-access", refresh_token: "tiktok-refresh", expires_in: 86400, open_id: "open-1", scope: "user.info.basic,user.info.stats" });
+      }
+      if (String(url).includes("/v2/user/info/")) {
+        assert.equal(options.headers.authorization, "Bearer tiktok-access");
+        return response({ data: { user: { open_id: "open-1", username: "artist", display_name: "Artist", follower_count: 118000, video_count: 42 } }, error: { code: "ok" } });
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    },
+  });
+  const session = { user: { id: "user-1" }, accessToken: "supabase-token" };
+  const started = await service.begin("tiktok", session);
+  const authorization = new URL(started.redirectUrl);
+  const state = authorization.searchParams.get("state");
+  const callbackUrl = new URL(`https://fanmesh.example/api/v1/oauth/tiktok/callback?code=code-1&state=${encodeURIComponent(state)}`);
+  const result = await service.callback("tiktok", session, callbackUrl, {
+    headers: { cookie: cookieHeader(started.cookies[0]) },
+  });
+
+  assert.equal(result.status, "connected");
+  assert.equal(result.account, "Artist");
+  assert.equal(savedConnection.metadata.public.profile.followers, 118000);
+  assert.equal(JSON.stringify(savedConnection).includes("tiktok-access"), false);
+  assert.equal(service.vault.open(savedConnection.metadata.credentials).refreshToken, "tiktok-refresh");
+  assert.match(result.cookies[0], new RegExp(`^${STATE_COOKIE}=`));
+  assert.match(result.cookies[0], /Max-Age=0/);
+});
+
+test("OAuth callback refuses a mismatched anti-forgery state", async () => {
+  const service = createOAuthService({
+    environment: {
+      APP_BASE_URL: "http://localhost:3000",
+      OAUTH_TOKEN_ENCRYPTION_KEY: encryptionKey,
+      TIKTOK_CLIENT_KEY: "client-key",
+      TIKTOK_CLIENT_SECRET: "client-secret",
+    },
+    workspaceStore: { async saveSourceConnection() { throw new Error("must not save"); } },
+    async fetchImpl() { throw new Error("must not fetch"); },
+  });
+  const session = { user: { id: "user-1" }, accessToken: "token" };
+  const started = await service.begin("tiktok", session);
+  const callbackUrl = new URL("http://localhost:3000/api/v1/oauth/tiktok/callback?code=code-1&state=wrong-state");
+  await assert.rejects(
+    service.callback("tiktok", session, callbackUrl, { headers: { cookie: cookieHeader(started.cookies[0]) } }),
+    /state verification failed/,
+  );
+});
+
+test("X authorization uses a PKCE challenge and never places its verifier in the redirect URL", async () => {
+  const service = createOAuthService({
+    environment: {
+      APP_BASE_URL: "http://localhost:3000",
+      OAUTH_TOKEN_ENCRYPTION_KEY: encryptionKey,
+      X_CLIENT_ID: "x-client",
+    },
+    workspaceStore: {},
+  });
+  const started = await service.begin("x", { user: { id: "user-1" }, accessToken: "token" });
+  const url = new URL(started.redirectUrl);
+  assert.equal(url.searchParams.get("code_challenge_method"), "S256");
+  assert.ok(url.searchParams.get("code_challenge"));
+  assert.equal(url.searchParams.has("code_verifier"), false);
+});
+
+test("expired TikTok access is refreshed server-side before synchronization", async () => {
+  let stored;
+  const environment = {
+    APP_BASE_URL: "http://localhost:3000",
+    OAUTH_TOKEN_ENCRYPTION_KEY: encryptionKey,
+    TIKTOK_CLIENT_KEY: "client-key",
+    TIKTOK_CLIENT_SECRET: "client-secret",
+  };
+  const vault = createTokenVault(environment);
+  const expiredCredentials = vault.seal({
+    accessToken: "expired-access",
+    refreshToken: "valid-refresh",
+    expiresAt: "2000-01-01T00:00:00.000Z",
+    grantedScopes: ["user.info.basic"],
+  });
+  const service = createOAuthService({
+    environment,
+    now: () => Date.parse("2026-07-29T12:00:00.000Z"),
+    workspaceStore: {
+      async getSourceConnection() {
+        return { status: "connected", scopes: ["user.info.basic"], metadata: { credentials: expiredCredentials } };
+      },
+      async saveSourceConnection(user, token, connection) {
+        stored = connection;
+        return { status: "connected" };
+      },
+    },
+    async fetchImpl(url, options = {}) {
+      if (String(url).includes("/v2/oauth/token/")) {
+        assert.match(options.body, /grant_type=refresh_token/);
+        return response({ access_token: "fresh-access", refresh_token: "rotated-refresh", expires_in: 86400 });
+      }
+      if (String(url).includes("/v2/user/info/")) {
+        assert.equal(options.headers.authorization, "Bearer fresh-access");
+        return response({ data: { user: { open_id: "open-1", display_name: "Artist", follower_count: 10 } }, error: { code: "ok" } });
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    },
+  });
+  await service.sync("tiktok", { user: { id: "user-1" }, accessToken: "supabase-token" });
+  const refreshed = service.vault.open(stored.metadata.credentials);
+  assert.equal(refreshed.accessToken, "fresh-access");
+  assert.equal(refreshed.refreshToken, "rotated-refresh");
+});

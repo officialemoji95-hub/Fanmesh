@@ -71,3 +71,44 @@ test("audience commits upsert fans and record consent provenance", async () => {
   assert.deepEqual(fan.consented_channels, ["email"]);
   assert.equal(fan.source_provenance.latest.consentSource, "meta-lead-form");
 });
+
+test("OAuth connections persist encrypted metadata and refresh aggregate audience totals", async () => {
+  const calls = [];
+  function response(payload, status = 200) {
+    return { ok: status >= 200 && status < 300, status, async text() { return payload === null ? "" : JSON.stringify(payload); } };
+  }
+  const store = createWorkspaceStore({
+    environment: { SUPABASE_URL: "https://project.supabase.co", SUPABASE_PUBLISHABLE_KEY: "public-key" },
+    async fetchImpl(url, options = {}) {
+      calls.push({ url, options });
+      if (url.includes("workspace_members")) return response([{ workspace_id: "workspace-1", role: "owner" }]);
+      if (url.includes("/workspaces?")) return response([{ id: "workspace-1", name: "Creator workspace", slug: "creator" }]);
+      if (url.includes("source_connections?on_conflict=") && options.method === "POST") {
+        const row = JSON.parse(options.body)[0];
+        return response([{ ...row, updated_at: "2026-07-29T12:00:00.000Z" }], 201);
+      }
+      if (url.includes("source_connections?select=platform,status,metadata")) {
+        return response([{ platform: "tiktok", status: "connected", metadata: { metrics: { totalFollowers: 118000 } } }]);
+      }
+      if (url.includes("/fans?select=id,consented_channels")) return response([]);
+      if (url.endsWith("/rest/v1/audience_snapshots") && options.method === "POST") return response(null, 201);
+      throw new Error(`Unexpected request: ${options.method || "GET"} ${url}`);
+    },
+  });
+  const saved = await store.saveSourceConnection({ id: "user-1" }, "user-token", {
+    platform: "tiktok",
+    status: "connected",
+    externalAccountId: "open-1",
+    scopes: ["user.info.basic"],
+    metadata: {
+      credentials: "v1.encrypted.only",
+      public: { profile: { name: "Artist", username: "artist" } },
+      metrics: { totalFollowers: 118000, adAccounts: 0 },
+    },
+  });
+  assert.equal(saved.account.name, "Artist");
+  assert.equal(saved.account.followers, 118000);
+  assert.equal(JSON.stringify(saved).includes("credentials"), false);
+  const snapshotCall = calls.find((call) => call.url.endsWith("/rest/v1/audience_snapshots"));
+  assert.equal(JSON.parse(snapshotCall.options.body)[0].total_followers, 118000);
+});
