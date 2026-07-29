@@ -124,6 +124,23 @@ h2 { font-size: 18px; }
 .connection-button:disabled { opacity: .6; cursor: wait; }
 .connection-link { padding: 4px 0; border: 0; background: transparent; color: #a05b50; cursor: pointer; font-size: 7px; font-weight: 700; }
 .connection-needed { margin-top: 11px; display: inline-flex; padding: 6px 8px; color: #766c52; background: #f2eee3; border-radius: 6px; font-size: 7px; font-weight: 700; }
+.tiktok-performance { margin-top: 14px; padding: 16px; border: 1px solid #dad7e7; border-radius: 11px; background: linear-gradient(140deg, #f8f7ff, #fbfaf6 62%); }
+.tiktok-performance-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.tiktok-performance-heading h3 { margin-top: 3px; font-size: 15px; }
+.tiktok-performance-metrics { margin-top: 13px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }
+.tiktok-performance-metrics > span { padding: 10px; display: grid; gap: 3px; border: 1px solid #e5e2ee; border-radius: 8px; background: rgba(255,255,255,.72); }
+.tiktok-performance-metrics small { color: #8b8b92; font-size: 7px; text-transform: uppercase; letter-spacing: .45px; }
+.tiktok-performance-metrics strong { font-size: 14px; }
+.tiktok-video-list { margin-top: 12px; display: grid; gap: 5px; }
+.tiktok-video-row { padding: 8px 9px; display: grid; grid-template-columns: minmax(160px, 1.5fr) repeat(4, minmax(55px, .5fr)); align-items: center; gap: 8px; border: 1px solid #ece9e1; border-radius: 7px; background: #fff; }
+.tiktok-video-title { min-width: 0; display: grid; gap: 3px; }
+.tiktok-video-title a, .tiktok-video-title strong { overflow: hidden; color: #3d3c43; font-size: 8px; font-weight: 700; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
+.tiktok-video-title a:hover { color: var(--purple); }
+.tiktok-video-title small, .tiktok-video-row > span small { color: #99999f; font-size: 6.5px; }
+.tiktok-video-row > span { display: grid; gap: 2px; }
+.tiktok-video-row > span b { font-size: 8px; }
+.tiktok-empty { min-height: 0 !important; margin: 0 !important; padding: 12px; border-radius: 7px; background: #fff; font-size: 8px !important; }
+.tiktok-method { min-height: 0 !important; margin: 10px 0 0 !important; color: #89898f; font-size: 7px !important; }
 .connection-setup-note { margin: 10px 0 0; color: #8d8d93; font-size: 8px; line-height: 1.5; }
 .import-workbench { margin-top: 18px; padding: 17px; display: grid; grid-template-columns: .75fr 1.25fr; gap: 22px; border: 1px solid #dfdbea; border-radius: 11px; background: linear-gradient(135deg, #f8f6ff, #fbfaf6 60%); }
 .import-intro h3 { margin-top: 4px; font-size: 15px; }
@@ -334,6 +351,9 @@ body.auth-open { overflow: hidden; }
   .top-actions .button { padding: 0 10px; font-size: 10px; }
   .notice { align-items: flex-start; }
   .metrics, .dashboard-grid, .campaign-grid, .social-planner, .import-workbench { grid-template-columns: 1fr; }
+  .tiktok-performance-metrics { grid-template-columns: repeat(2, 1fr); }
+  .tiktok-video-row { grid-template-columns: minmax(130px, 1.3fr) repeat(2, minmax(55px, .5fr)); }
+  .tiktok-video-row > span:nth-of-type(n+3) { display: none; }
   .source-grid { grid-template-columns: repeat(2, 1fr); }
   .recommendation-list { grid-template-columns: 1fr; }
   .table-heading { align-items: flex-start; }
