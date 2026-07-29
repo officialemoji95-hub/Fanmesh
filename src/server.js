@@ -11,7 +11,7 @@ import { openApiDocument } from "./openapi.js";
 import { getConnectionCatalog, planSocialExperiment, previewLeadImport } from "./social.js";
 import { scoreAudience, scoreFan } from "./scoring.js";
 
-const APP_VERSION = "0.4.0";
+const APP_VERSION = "0.4.1";
 const port = Number(process.env.PORT || 3000);
 const publicDirectory = fileURLToPath(new URL("../public", import.meta.url));
 const maxBodyBytes = 2 * 1024 * 1024;
@@ -22,6 +22,7 @@ const mimeTypes = {
   ".ico": "image/x-icon",
   ".js": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".png": "image/png",
   ".svg": "image/svg+xml",
 };
 
