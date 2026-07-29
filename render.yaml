@@ -21,6 +21,8 @@ services:
         sync: false
       - key: META_APP_SECRET
         sync: false
+      - key: META_GRAPH_VERSION
+        value: v25.0
       - key: TIKTOK_CLIENT_KEY
         sync: false
       - key: TIKTOK_CLIENT_SECRET

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createWorkspaceStore, emptyAudienceSnapshot, toFanRecord } from "../src/database.js";
+import { createWorkspaceStore, emptyAudienceSnapshot, publicConnectionState, toFanRecord } from "../src/database.js";
 
 test("database fan rows map into the scoring contract", () => {
   const fan = toFanRecord({
@@ -26,6 +26,38 @@ test("new private workspaces start with truthful zero metrics", () => {
     connectedPlatforms: 0,
   });
   assert.equal(Object.isFrozen(emptyAudienceSnapshot), true);
+});
+
+test("Meta connection summaries expose aggregate assets without credentials or lead identities", () => {
+  const state = publicConnectionState({
+    status: "connected",
+    external_account_id: "person-1",
+    scopes: ["pages_show_list", "ads_read", "leads_retrieval"],
+    metadata: {
+      credentials: "v1.private.encrypted",
+      public: {
+        profile: { name: "Artist" },
+        pages: [{ id: "page-1", name: "Artist Page", followers: 12000, access_token: "must-not-leak" }],
+        instagramAccounts: [{
+          id: "ig-1",
+          username: "artist",
+          followers: 8000,
+          recentMedia: [{ id: "media-1", caption: "New release", permalink: "https://www.instagram.com/reel/example/", likes: 80, comments: 20, interactions: 100 }],
+        }],
+        adAccounts: [{ id: "act_1", name: "Release Ads", currency: "USD", insights30d: { spend: 125.5, impressions: 50000, reach: 31000, clicks: 900, leads: 42 } }],
+        leadForms: [{ id: "form-1", pageId: "page-1", name: "Early access", status: "active", leadCount: 43 }],
+        adSummary30d: { currency: "USD", spend: 125.5, impressions: 50000, reach: 31000, clicks: 900, leads: 42 },
+        syncIssues: [],
+      },
+      metrics: { totalFollowers: 20000, pages: 1, instagramAccounts: 1, adAccounts: 1, leadForms: 1, knownLeads: 43 },
+    },
+  });
+  assert.equal(state.account.followers, 20000);
+  assert.equal(state.account.instagramAccounts[0].recentMedia[0].interactions, 100);
+  assert.equal(state.account.adSummary30d.spend, 125.5);
+  assert.equal(state.account.leadForms[0].leadCount, 43);
+  assert.equal(JSON.stringify(state).includes("credentials"), false);
+  assert.equal(JSON.stringify(state).includes("must-not-leak"), false);
 });
 
 test("audience commits upsert fans and record consent provenance", async () => {

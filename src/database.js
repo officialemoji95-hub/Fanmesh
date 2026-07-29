@@ -37,7 +37,22 @@ export function toFanRecord(row = {}) {
   };
 }
 
-function publicConnectionState(row = {}) {
+function shortText(value, maxLength = 150) {
+  return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
+}
+
+function safePublicUrl(value, allowedHost) {
+  try {
+    const url = new URL(shortText(value, 1000));
+    if (url.protocol !== "https:") return "";
+    if (url.hostname !== allowedHost && !url.hostname.endsWith(`.${allowedHost}`)) return "";
+    return url.href;
+  } catch {
+    return "";
+  }
+}
+
+export function publicConnectionState(row = {}) {
   const publicData = row.metadata?.public || {};
   const profile = publicData.profile || {};
   const organizations = Array.isArray(publicData.organizations) ? publicData.organizations : [];
@@ -57,6 +72,71 @@ function publicConnectionState(row = {}) {
       shares: Math.max(0, Number(video?.shares) || 0),
     }))
     .filter((video) => video.id);
+  const pages = (Array.isArray(publicData.pages) ? publicData.pages : []).slice(0, 100).map((page) => ({
+    id: shortText(page?.id, 80),
+    name: shortText(page?.name, 120) || "Untitled Page",
+    followers: Math.max(0, Number(page?.followers) || 0),
+  })).filter((page) => page.id);
+  const instagramAccounts = (Array.isArray(publicData.instagramAccounts) ? publicData.instagramAccounts : [])
+    .slice(0, 100)
+    .map((account) => ({
+      id: shortText(account?.id, 80),
+      username: shortText(account?.username, 120),
+      name: shortText(account?.name, 120),
+      followers: Math.max(0, Number(account?.followers) || 0),
+      follows: Math.max(0, Number(account?.follows) || 0),
+      mediaCount: Math.max(0, Number(account?.mediaCount) || 0),
+      access: shortText(account?.access, 40) || null,
+      recentMedia: (Array.isArray(account?.recentMedia) ? account.recentMedia : []).slice(0, 20).map((media) => ({
+        id: shortText(media?.id, 80),
+        caption: shortText(media?.caption, 180) || "Untitled Instagram post",
+        mediaType: shortText(media?.mediaType, 30),
+        productType: shortText(media?.productType, 30),
+        permalink: safePublicUrl(media?.permalink, "instagram.com"),
+        createdAt: media?.createdAt || null,
+        likes: Math.max(0, Number(media?.likes) || 0),
+        comments: Math.max(0, Number(media?.comments) || 0),
+        interactions: Math.max(0, Number(media?.interactions) || 0),
+      })).filter((media) => media.id),
+    })).filter((account) => account.id);
+  const adAccounts = (Array.isArray(publicData.adAccounts) ? publicData.adAccounts : []).slice(0, 100).map((account) => ({
+    id: shortText(account?.id, 80),
+    name: shortText(account?.name, 120) || "Untitled ad account",
+    status: Number(account?.status) || 0,
+    currency: shortText(account?.currency, 10),
+    timezone: shortText(account?.timezone, 80),
+    insights30d: {
+      spend: Math.max(0, Number(account?.insights30d?.spend) || 0),
+      impressions: Math.max(0, Number(account?.insights30d?.impressions) || 0),
+      reach: Math.max(0, Number(account?.insights30d?.reach) || 0),
+      clicks: Math.max(0, Number(account?.insights30d?.clicks) || 0),
+      leads: Math.max(0, Number(account?.insights30d?.leads) || 0),
+    },
+  })).filter((account) => account.id);
+  const leadForms = (Array.isArray(publicData.leadForms) ? publicData.leadForms : []).slice(0, 250).map((form) => ({
+    id: shortText(form?.id, 80),
+    pageId: shortText(form?.pageId, 80),
+    name: shortText(form?.name, 120) || "Untitled Instant Form",
+    status: shortText(form?.status, 40),
+    createdAt: form?.createdAt || null,
+    leadCount: form?.leadCount !== null && form?.leadCount !== undefined && Number.isFinite(Number(form.leadCount))
+      ? Math.max(0, Number(form.leadCount))
+      : null,
+    latestLeadAt: form?.latestLeadAt || null,
+  })).filter((form) => form.id);
+  const syncIssues = (Array.isArray(publicData.syncIssues) ? publicData.syncIssues : []).slice(0, 10).map((issue) => ({
+    area: shortText(issue?.area, 40),
+    message: shortText(issue?.message, 240),
+  })).filter((issue) => issue.area && issue.message);
+  const adSummary30d = publicData.adSummary30d && typeof publicData.adSummary30d === "object" ? {
+    period: "last_30d",
+    currency: shortText(publicData.adSummary30d.currency, 10) || null,
+    spend: Number.isFinite(Number(publicData.adSummary30d.spend)) ? Math.max(0, Number(publicData.adSummary30d.spend)) : null,
+    impressions: Math.max(0, Number(publicData.adSummary30d.impressions) || 0),
+    reach: Math.max(0, Number(publicData.adSummary30d.reach) || 0),
+    clicks: Math.max(0, Number(publicData.adSummary30d.clicks) || 0),
+    leads: Math.max(0, Number(publicData.adSummary30d.leads) || 0),
+  } : null;
   const accountName = profile.name || profile.username || organizations[0]?.name || null;
   return {
     status: row.status || "not_connected",
@@ -67,6 +147,16 @@ function publicConnectionState(row = {}) {
       username: profile.username || null,
       followers: Number(metrics.totalFollowers) || 0,
       adAccounts: Number(metrics.adAccounts) || 0,
+      pageCount: Number(metrics.pages) || pages.length,
+      instagramAccountCount: Number(metrics.instagramAccounts) || instagramAccounts.length,
+      leadFormCount: Number(metrics.leadForms) || leadForms.length,
+      knownLeads: Number(metrics.knownLeads) || 0,
+      recentMediaCount: Number(metrics.recentMediaCount) || instagramAccounts.reduce((sum, account) => sum + account.recentMedia.length, 0),
+      recentMediaInteractions: Number(metrics.recentMediaInteractions) || 0,
+      adImpressions30d: Number(metrics.adImpressions30d) || 0,
+      adReach30d: Number(metrics.adReach30d) || 0,
+      adClicks30d: Number(metrics.adClicks30d) || 0,
+      adLeads30d: Number(metrics.adLeads30d) || 0,
       averageViews: Number(metrics.averageViews) || 0,
       medianViews: Number(metrics.medianViews) || 0,
       engagementRate: Number(metrics.engagementRate) || 0,
@@ -78,6 +168,12 @@ function publicConnectionState(row = {}) {
       latestVideoAt: metrics.latestVideoAt || recentVideos[0]?.createdAt || null,
       performanceWindow: metrics.performanceWindow || null,
       recentVideos,
+      pages,
+      instagramAccounts,
+      adAccountsDetail: adAccounts,
+      leadForms,
+      adSummary30d,
+      syncIssues,
       syncedAt: row.metadata?.syncedAt || row.updated_at || null,
     } : null,
   };

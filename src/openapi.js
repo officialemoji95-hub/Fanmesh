@@ -2,7 +2,7 @@ export const openApiDocument = {
   openapi: "3.1.0",
   info: {
     title: "FanMesh API",
-    version: "0.4.0",
+    version: "0.6.0",
     description: "Audience intelligence API for consented fan relationships.",
   },
   servers: [{ url: "/api/v1" }],
