@@ -287,7 +287,8 @@ main > footer .brand { color: var(--ink); font-size: 13px; }
 main > footer .brand > span:last-child { color: var(--lime); }
 main > footer .brand-mark { transform: scale(.65); margin-right: -7px; }
 main > footer p { margin: 0; }
-main > footer a { margin-left: auto; color: var(--purple); font-weight: 700; }
+main > footer nav { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+main > footer a { color: var(--purple); font-weight: 700; }
 .toast { position: fixed; z-index: 20; right: 24px; bottom: 24px; max-width: 330px; padding: 12px 15px; color: #fff; background: #242529; border: 1px solid #3a3b40; border-radius: 8px; box-shadow: 0 12px 35px rgba(0,0,0,.18); font-size: 11px; opacity: 0; transform: translateY(10px); pointer-events: none; transition: .22s; }
 .toast.show { opacity: 1; transform: translateY(0); }
 [hidden] { display: none !important; }
