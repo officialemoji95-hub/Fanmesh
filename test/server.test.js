@@ -33,7 +33,16 @@ async function dispatch({ method = "GET", url = "/", body = "", handler = handle
 test("health endpoint reports an operational service", async () => {
   const response = await dispatch({ url: "/api/health" });
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.4.0", database: "demo" });
+  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.4.1", database: "demo" });
+});
+
+test("public legal pages explain FanMesh data and platform rules", async () => {
+  const privacy = await dispatch({ url: "/privacy.html" });
+  const terms = await dispatch({ url: "/terms.html" });
+  assert.equal(privacy.statusCode, 200);
+  assert.equal(terms.statusCode, 200);
+  assert.match(Buffer.concat(privacy.chunks).toString("utf8"), /official platform APIs/i);
+  assert.match(Buffer.concat(terms.chunks).toString("utf8"), /no guarantee that any follower will see a post/i);
 });
 
 test("auth session clearly reports unconfigured demo mode", async () => {
