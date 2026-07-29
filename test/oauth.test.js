@@ -71,7 +71,10 @@ test("TikTok callback verifies state, encrypts tokens, and stores a safe account
       }
       if (String(url).includes("/v2/user/info/")) {
         assert.equal(options.headers.authorization, "Bearer tiktok-access");
-        return response({ data: { user: { open_id: "open-1", username: "artist", display_name: "Artist", follower_count: 118000, video_count: 42 } }, error: { code: "ok" } });
+        const requestedFields = new URL(String(url)).searchParams.get("fields").split(",");
+        assert.equal(requestedFields.includes("username"), false);
+        assert.equal(requestedFields.includes("follower_count"), true);
+        return response({ data: { user: { open_id: "open-1", display_name: "Artist", follower_count: 118000, video_count: 42 } }, error: { code: "ok" } });
       }
       throw new Error(`Unexpected URL ${url}`);
     },
