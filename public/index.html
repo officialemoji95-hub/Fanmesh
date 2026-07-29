@@ -114,6 +114,40 @@
           <div class="source-grid" id="source-grid" aria-live="polite">
             <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
           </div>
+          <section class="import-workbench" aria-labelledby="import-title">
+            <div class="import-intro">
+              <p class="eyebrow">Authorized audience import</p>
+              <h3 id="import-title">Bring your ad leads into one private mesh</h3>
+              <p>Upload an official export or your own first-party CSV. FanMesh previews and deduplicates it before anything is saved.</p>
+              <a class="text-link" href="/fanmesh-import-template.csv" download>Download CSV template ↓</a>
+              <ul>
+                <li>Requires an email or phone plus explicit consent provenance.</li>
+                <li>Never upload scraped, purchased, or platform-password data.</li>
+                <li>Previewing does not write to your database.</li>
+              </ul>
+            </div>
+            <form id="audience-import-form">
+              <div class="import-fields">
+                <label>Data source<select name="source" required>
+                  <option value="meta_ads">Meta Ads leads</option>
+                  <option value="facebook_export">Facebook official export</option>
+                  <option value="instagram_export">Instagram official export</option>
+                  <option value="tiktok_ads">TikTok Ads leads</option>
+                  <option value="google_ads">Google Ads leads</option>
+                  <option value="youtube_export">YouTube official export</option>
+                  <option value="csv">First-party consent CSV</option>
+                </select></label>
+                <label>CSV file<input name="file" type="file" accept=".csv,text/csv" required></label>
+              </div>
+              <button class="button secondary" type="submit">Preview import</button>
+              <article class="import-preview" id="import-preview" aria-live="polite">
+                <strong>No file previewed</strong>
+                <span>Use the template headers so consent and source data can be verified.</span>
+              </article>
+              <label class="authorization-check"><input id="import-authorized" type="checkbox" disabled> I confirm this is my authorized data and every accepted contact has the consent shown in the file.</label>
+              <button class="button primary" id="commit-import" type="button" disabled>Commit accepted records ↗</button>
+            </form>
+          </section>
           <div class="social-planner">
             <div>
               <p class="eyebrow">First experiment</p>
