@@ -120,6 +120,118 @@ test("TikTok callback verifies state, encrypts tokens, and stores a safe account
   assert.match(result.cookies[0], /Max-Age=0/);
 });
 
+test("Meta callback syncs authorized Pages, organic Instagram media, ad insights, and lead-form inventory", async () => {
+  let savedConnection;
+  let tokenExchanges = 0;
+  const now = Date.parse("2026-07-29T12:00:00.000Z");
+  const service = createOAuthService({
+    now: () => now,
+    environment: {
+      NODE_ENV: "production",
+      APP_BASE_URL: "https://fanmesh.example",
+      OAUTH_TOKEN_ENCRYPTION_KEY: encryptionKey,
+      META_APP_ID: "meta-client",
+      META_APP_SECRET: "meta-secret",
+      META_GRAPH_VERSION: "v25.0",
+    },
+    workspaceStore: {
+      async saveSourceConnection(user, accessToken, connection) {
+        assert.equal(user.id, "user-1");
+        assert.equal(accessToken, "supabase-token");
+        savedConnection = connection;
+        return { status: connection.status };
+      },
+    },
+    async fetchImpl(url) {
+      const parsed = new URL(String(url));
+      if (parsed.pathname.endsWith("/oauth/access_token")) {
+        tokenExchanges += 1;
+        return response({ access_token: tokenExchanges === 1 ? "meta-short" : "meta-long", expires_in: 5184000 });
+      }
+      assert.match(parsed.pathname, /^\/v25\.0\//);
+      if (parsed.pathname.endsWith("/me/accounts")) {
+        assert.match(parsed.searchParams.get("fields"), /access_token/);
+        return response({ data: [{
+          id: "page-1",
+          name: "Artist Page",
+          access_token: "page-secret",
+          followers_count: 12000,
+          tasks: ["ANALYZE", "ADVERTISE"],
+          instagram_business_account: { id: "ig-1" },
+        }] });
+      }
+      if (parsed.pathname.endsWith("/me/adaccounts")) {
+        return response({ data: [{ id: "act_1", name: "Release Ads", account_status: 1, currency: "USD", timezone_name: "Africa/Lagos" }] });
+      }
+      if (parsed.pathname.endsWith("/me/permissions")) {
+        return response({ data: [
+          { permission: "public_profile", status: "granted" },
+          { permission: "pages_show_list", status: "granted" },
+          { permission: "pages_read_engagement", status: "granted" },
+          { permission: "instagram_basic", status: "granted" },
+          { permission: "ads_read", status: "granted" },
+          { permission: "leads_retrieval", status: "granted" },
+          { permission: "business_management", status: "declined" },
+        ] });
+      }
+      if (parsed.pathname.endsWith("/me")) return response({ id: "person-1", name: "Artist" });
+      if (parsed.pathname.endsWith("/ig-1/media")) {
+        return response({ data: [{
+          id: "media-1",
+          caption: "New release",
+          media_type: "VIDEO",
+          media_product_type: "REELS",
+          permalink: "https://www.instagram.com/reel/example/",
+          timestamp: "2026-07-28T10:00:00+0000",
+          like_count: 80,
+          comments_count: 20,
+        }] });
+      }
+      if (parsed.pathname.endsWith("/ig-1")) {
+        return response({ id: "ig-1", username: "artist", name: "Artist IG", followers_count: 8000, follows_count: 100, media_count: 30 });
+      }
+      if (parsed.pathname.endsWith("/page-1/leadgen_forms")) {
+        return response({ data: [{ id: "form-1", name: "Early access", status: "ACTIVE", created_time: "2026-07-01T09:00:00+0000" }] });
+      }
+      if (parsed.pathname.endsWith("/form-1/leads")) {
+        assert.equal(parsed.searchParams.get("fields"), "id,created_time");
+        return response({ data: [{ id: "lead-hidden", created_time: "2026-07-27T11:00:00+0000" }], summary: { total_count: 43 } });
+      }
+      if (parsed.pathname.endsWith("/act_1/insights")) {
+        assert.equal(parsed.searchParams.get("date_preset"), "last_30d");
+        return response({ data: [{ spend: "125.50", impressions: "50000", reach: "31000", clicks: "900", actions: [{ action_type: "lead", value: "42" }] }] });
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    },
+  });
+  const session = { user: { id: "user-1" }, accessToken: "supabase-token" };
+  const started = await service.begin("meta", session);
+  const authorization = new URL(started.redirectUrl);
+  assert.equal(authorization.pathname, "/v25.0/dialog/oauth");
+  const state = authorization.searchParams.get("state");
+  const result = await service.callback("meta", session, new URL(
+    `https://fanmesh.example/api/v1/oauth/meta/callback?code=code-1&state=${encodeURIComponent(state)}`,
+  ), { headers: { cookie: cookieHeader(started.cookies[0]) } });
+
+  assert.equal(result.status, "connected");
+  assert.equal(result.account, "Artist");
+  assert.equal(savedConnection.metadata.metrics.totalFollowers, 20000);
+  assert.equal(savedConnection.metadata.metrics.recentMediaInteractions, 100);
+  assert.equal(savedConnection.metadata.metrics.knownLeads, 43);
+  assert.equal(savedConnection.metadata.public.instagramAccounts[0].recentMedia[0].productType, "reels");
+  assert.equal(savedConnection.metadata.public.adSummary30d.spend, 125.5);
+  assert.equal(savedConnection.metadata.public.adSummary30d.leads, 42);
+  assert.deepEqual(savedConnection.metadata.public.syncIssues, []);
+  assert.equal(savedConnection.scopes.includes("leads_retrieval"), true);
+  assert.equal(savedConnection.scopes.includes("business_management"), false);
+  assert.equal(JSON.stringify(savedConnection).includes("meta-long"), false);
+  assert.equal(JSON.stringify(savedConnection).includes("page-secret"), false);
+  const privateCredentials = service.vault.open(savedConnection.metadata.credentials);
+  assert.equal(privateCredentials.accessToken, "meta-long");
+  assert.equal(privateCredentials.grantedScopes.includes("business_management"), false);
+  assert.equal(privateCredentials.providerAssets.pageTokens["page-1"], "page-secret");
+});
+
 test("OAuth callback refuses a mismatched anti-forgery state", async () => {
   const service = createOAuthService({
     environment: {
