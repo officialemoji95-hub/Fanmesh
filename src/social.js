@@ -79,17 +79,17 @@ function invalid(index, reason) {
   return { row: index + 1, reason };
 }
 
-export function getConnectionCatalog() {
+export function getConnectionCatalog(statuses = {}) {
   const social = Object.entries(PLATFORM_CAPABILITIES).map(([platform, details]) => ({
     platform,
     ...details,
-    status: "not_connected",
+    status: statuses[platform] || "not_connected",
     tokenPolicy: "FanMesh stores connection metadata only; access tokens belong in the production secret store.",
   }));
   const imports = Object.entries(IMPORT_CAPABILITIES).map(([platform, details]) => ({
     platform,
     ...details,
-    status: "ready_for_authorized_import",
+    status: statuses[platform] || "ready_for_authorized_import",
     tokenPolicy: "Use an official export or API. Do not upload purchased, scraped, or unconsented lists.",
   }));
   return { social, imports };
