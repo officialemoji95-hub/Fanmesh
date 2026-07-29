@@ -153,6 +153,61 @@ function capabilityLabel(capability) {
   return capability.replaceAll("_", " ");
 }
 
+function safeTikTokShareUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    if (url.protocol !== "https:") return "";
+    if (url.hostname !== "tiktok.com" && !url.hostname.endsWith(".tiktok.com")) return "";
+    return url.href;
+  } catch {
+    return "";
+  }
+}
+
+function shortDate(value) {
+  const date = new Date(value || "");
+  return Number.isFinite(date.getTime())
+    ? new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(date)
+    : "Date unavailable";
+}
+
+function renderTikTokPerformance(catalog) {
+  const target = document.querySelector("#tiktok-performance");
+  const source = catalog.social.find((item) => item.platform === "tiktok");
+  if (source?.status !== "connected" || !source.account) {
+    target.hidden = true;
+    target.innerHTML = "";
+    return;
+  }
+  const account = source.account;
+  const videos = Array.isArray(account.recentVideos) ? account.recentVideos.slice(0, 5) : [];
+  const rows = videos.map((video) => {
+    const shareUrl = safeTikTokShareUrl(video.shareUrl);
+    const title = escapeHtml(video.title || video.description || "Untitled TikTok post");
+    return `<article class="tiktok-video-row">
+      <div class="tiktok-video-title">${shareUrl ? `<a href="${escapeHtml(shareUrl)}" target="_blank" rel="noopener noreferrer">${title} ↗</a>` : `<strong>${title}</strong>`}<small>${escapeHtml(shortDate(video.createdAt))}</small></div>
+      <span><b>${numberFormatter.format(video.views || 0)}</b><small>views</small></span>
+      <span><b>${numberFormatter.format(video.likes || 0)}</b><small>likes</small></span>
+      <span><b>${numberFormatter.format(video.comments || 0)}</b><small>comments</small></span>
+      <span><b>${numberFormatter.format(video.shares || 0)}</b><small>shares</small></span>
+    </article>`;
+  }).join("");
+  target.hidden = false;
+  target.innerHTML = `
+    <div class="tiktok-performance-heading">
+      <div><p class="eyebrow">TikTok performance</p><h3>What your latest public posts are actually doing</h3></div>
+      <span class="status good">Latest ${numberFormatter.format(account.recentVideoCount || 0)} of 20</span>
+    </div>
+    <div class="tiktok-performance-metrics">
+      <span><small>Posts analyzed</small><strong>${numberFormatter.format(account.recentVideoCount || 0)}</strong></span>
+      <span><small>Average views</small><strong>${numberFormatter.format(account.averageViews || 0)}</strong></span>
+      <span><small>Median views</small><strong>${numberFormatter.format(account.medianViews || 0)}</strong></span>
+      <span><small>Engagement / view</small><strong>${percent(account.engagementRate)}</strong></span>
+    </div>
+    <div class="tiktok-video-list">${rows || `<p class="tiktok-empty">TikTok returned no public videos for this account yet. Sync again after publishing a public post.</p>`}</div>
+    <p class="tiktok-method">Transparent window: up to the 20 most recent public posts returned by TikTok. Engagement is (likes + comments + shares) ÷ views.</p>`;
+}
+
 function renderConnections(catalog) {
   const sourceGrid = document.querySelector("#source-grid");
   const sources = catalog.social;
@@ -164,7 +219,7 @@ function renderConnections(catalog) {
       <p>${escapeHtml(source.caveat || "Import only records you are authorized to use.")}</p>
       <div class="source-tags">${source.capabilities.slice(0, 2).map((capability) => `<span>${escapeHtml(capabilityLabel(capability))}</span>`).join("")}</div>
       ${source.status === "connected" ? `
-        <div class="connection-summary"><strong>${numberFormatter.format(source.account?.followers || 0)} followers</strong><span>${numberFormatter.format(source.account?.adAccounts || 0)} ad accounts</span></div>
+        <div class="connection-summary"><strong>${numberFormatter.format(source.account?.followers || 0)} followers</strong><span>${source.platform === "tiktok" ? `${numberFormatter.format(source.account?.recentVideoCount || 0)} posts · ${numberFormatter.format(source.account?.averageViews || 0)} avg views` : `${numberFormatter.format(source.account?.adAccounts || 0)} ad accounts`}</span></div>
         <div class="connection-actions"><button class="connection-button" type="button" data-connection-sync="${escapeHtml(source.platform)}">Sync now</button><button class="connection-link" type="button" data-connection-disconnect="${escapeHtml(source.platform)}">Disconnect</button></div>
       ` : source.configured && source.connectUrl ? `
         <a class="connection-button" href="${escapeHtml(source.connectUrl)}">Connect ${escapeHtml(source.label)} ↗</a>
@@ -173,6 +228,7 @@ function renderConnections(catalog) {
       `}
     </article>
   `).join("");
+  renderTikTokPerformance(catalog);
 }
 
 async function runConnectionAction(action, platform, button) {
