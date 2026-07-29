@@ -1,4 +1,4 @@
-# FanMesh API v0.1
+# FanMesh API v0.3
 
 The prototype serves JSON under `/api`. Responses use `{ "data": ... }` for successful resources and `{ "error": { "message": ... } }` for errors. When Supabase is configured, workspace endpoints require the secure creator session cookie and PostgreSQL row-level security isolates every workspace. When Supabase is unconfigured, dashboard reads use clearly labeled demo data.
 
@@ -59,7 +59,11 @@ Accepts an `objective` (`release`, `sales`, or `community`) and a `contentType`.
 
 ### `POST /api/v1/imports/leads/preview`
 
-Accepts `{ "rows": [...] }` and validates up to 1,000 first-party lead records without persisting them. A valid row needs an email or phone, `consent: true`, a parseable `consentAt`, and a `consentSource`. The response includes normalized records, hashed contact keys, invalid-row reasons, and source counts. Purchased, scraped, or unconsented lists are not accepted.
+Accepts `{ "source": "meta_ads", "rows": [...] }` and validates up to 1,000 first-party lead records without persisting them. A valid row needs an email or phone, `consent: true`, a parseable `consentAt`, a `consentSource`, and channel-specific consent when both email and phone are present. The response includes normalized records, hashed contact keys, invalid-row reasons, duplicate counts, and source counts. Purchased, scraped, or unconsented lists are not accepted.
+
+### `POST /api/v1/imports/leads/commit`
+
+Requires a creator session and accepts the same source and rows plus `"confirmedAuthorized": true`. The server revalidates the full upload, upserts deduplicated fan records, merges earlier source provenance and channel signals, writes new consent events, and records an import run. Repeating an identical import does not duplicate the matching consent event.
 
 ### `POST /api/v1/experiments/social`
 
