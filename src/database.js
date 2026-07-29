@@ -42,6 +42,21 @@ function publicConnectionState(row = {}) {
   const profile = publicData.profile || {};
   const organizations = Array.isArray(publicData.organizations) ? publicData.organizations : [];
   const metrics = row.metadata?.metrics || {};
+  const recentVideos = (Array.isArray(publicData.recentVideos) ? publicData.recentVideos : [])
+    .slice(0, 20)
+    .map((video) => ({
+      id: String(video?.id || "").slice(0, 80),
+      title: String(video?.title || "Untitled TikTok post").slice(0, 150),
+      description: String(video?.description || "").slice(0, 150),
+      shareUrl: String(video?.shareUrl || "").slice(0, 1000),
+      createdAt: video?.createdAt || null,
+      duration: Math.max(0, Number(video?.duration) || 0),
+      views: Math.max(0, Number(video?.views) || 0),
+      likes: Math.max(0, Number(video?.likes) || 0),
+      comments: Math.max(0, Number(video?.comments) || 0),
+      shares: Math.max(0, Number(video?.shares) || 0),
+    }))
+    .filter((video) => video.id);
   const accountName = profile.name || profile.username || organizations[0]?.name || null;
   return {
     status: row.status || "not_connected",
@@ -52,6 +67,17 @@ function publicConnectionState(row = {}) {
       username: profile.username || null,
       followers: Number(metrics.totalFollowers) || 0,
       adAccounts: Number(metrics.adAccounts) || 0,
+      averageViews: Number(metrics.averageViews) || 0,
+      medianViews: Number(metrics.medianViews) || 0,
+      engagementRate: Number(metrics.engagementRate) || 0,
+      recentVideoCount: Number(metrics.recentVideoCount) || recentVideos.length,
+      totalRecentViews: Number(metrics.totalRecentViews) || 0,
+      recentLikes: Number(metrics.recentLikes) || 0,
+      recentComments: Number(metrics.recentComments) || 0,
+      recentShares: Number(metrics.recentShares) || 0,
+      latestVideoAt: metrics.latestVideoAt || recentVideos[0]?.createdAt || null,
+      performanceWindow: metrics.performanceWindow || null,
+      recentVideos,
       syncedAt: row.metadata?.syncedAt || row.updated_at || null,
     } : null,
   };
