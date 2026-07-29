@@ -67,7 +67,7 @@ test("TikTok callback verifies state, encrypts tokens, and stores a safe account
     async fetchImpl(url, options = {}) {
       if (String(url).includes("/v2/oauth/token/")) {
         assert.equal(options.method, "POST");
-        return response({ access_token: "tiktok-access", refresh_token: "tiktok-refresh", expires_in: 86400, open_id: "open-1", scope: "user.info.basic,user.info.stats" });
+        return response({ access_token: "tiktok-access", refresh_token: "tiktok-refresh", expires_in: 86400, open_id: "open-1", scope: "user.info.basic,user.info.stats,video.list" });
       }
       if (String(url).includes("/v2/user/info/")) {
         assert.equal(options.headers.authorization, "Bearer tiktok-access");
@@ -75,6 +75,21 @@ test("TikTok callback verifies state, encrypts tokens, and stores a safe account
         assert.equal(requestedFields.includes("username"), false);
         assert.equal(requestedFields.includes("follower_count"), true);
         return response({ data: { user: { open_id: "open-1", display_name: "Artist", follower_count: 118000, video_count: 42 } }, error: { code: "ok" } });
+      }
+      if (String(url).includes("/v2/video/list/")) {
+        assert.equal(options.method, "POST");
+        assert.equal(options.headers.authorization, "Bearer tiktok-access");
+        assert.deepEqual(JSON.parse(options.body), { max_count: 20 });
+        const requestedFields = new URL(String(url)).searchParams.get("fields").split(",");
+        assert.equal(requestedFields.includes("view_count"), true);
+        assert.equal(requestedFields.includes("share_count"), true);
+        return response({
+          data: { videos: [
+            { id: "video-2", title: "New post", create_time: 1785319200, share_url: "https://www.tiktok.com/@artist/video/2", view_count: 1000, like_count: 100, comment_count: 20, share_count: 10 },
+            { id: "video-1", video_description: "Previous post", create_time: 1785232800, share_url: "https://www.tiktok.com/@artist/video/1", view_count: 500, like_count: 40, comment_count: 5, share_count: 5 },
+          ] },
+          error: { code: "ok" },
+        });
       }
       throw new Error(`Unexpected URL ${url}`);
     },
@@ -92,6 +107,13 @@ test("TikTok callback verifies state, encrypts tokens, and stores a safe account
   assert.equal(result.status, "connected");
   assert.equal(result.account, "Artist");
   assert.equal(savedConnection.metadata.public.profile.followers, 118000);
+  assert.equal(savedConnection.metadata.public.recentVideos.length, 2);
+  assert.equal(savedConnection.metadata.public.recentVideos[0].title, "New post");
+  assert.equal(savedConnection.metadata.metrics.averageViews, 750);
+  assert.equal(savedConnection.metadata.metrics.medianViews, 750);
+  assert.equal(savedConnection.metadata.metrics.engagementRate, 12);
+  assert.equal(savedConnection.metadata.metrics.totalRecentViews, 1500);
+  assert.equal(savedConnection.metadata.metrics.performanceWindow, "latest_20_public_posts");
   assert.equal(JSON.stringify(savedConnection).includes("tiktok-access"), false);
   assert.equal(service.vault.open(savedConnection.metadata.credentials).refreshToken, "tiktok-refresh");
   assert.match(result.cookies[0], new RegExp(`^${STATE_COOKIE}=`));
