@@ -1,6 +1,6 @@
 # Official platform connections
 
-FanMesh v0.4 connects creator and business accounts through official OAuth consent screens. It never asks for a platform password. Authorization codes are exchanged on the server, and access and refresh tokens are encrypted with AES-256-GCM before the encrypted value is stored in the workspace's row-level-secured `source_connections` record.
+FanMesh v0.6 connects creator and business accounts through official OAuth consent screens. It never asks for a platform password. Authorization codes are exchanged on the server, and access and refresh tokens are encrypted with AES-256-GCM before the encrypted value is stored in the workspace's row-level-secured `source_connections` record.
 
 ## Shared Render settings
 
@@ -36,11 +36,20 @@ Create a Meta developer app intended for business account management, add Facebo
 ```text
 META_APP_ID=
 META_APP_SECRET=
+META_GRAPH_VERSION=v25.0
 ```
 
 FanMesh requests `public_profile`, `pages_show_list`, `pages_read_engagement`, `instagram_basic`, `ads_read`, `leads_retrieval`, and `business_management` by default. Meta can grant only a subset, and advanced access or app review is commonly required before non-role users can authorize business, advertising or lead permissions.
 
-The initial sync discovers the authorized Meta user, Pages, linked Instagram professional accounts and Meta ad accounts. It records aggregate follower totals only; OAuth does not provide a portable list of every follower.
+The sync discovers the authorized Meta user, Pages, linked Instagram professional accounts, Meta ad accounts, and Page Instant Forms. FanMesh then reads:
+
+- up to 20 recent media objects per authorized Instagram professional account with basic organic like/comment totals;
+- account-level ad spend, impressions, reach, clicks, and reported lead actions for Meta's `last_30d` preset;
+- Instant Form names/statuses and an aggregate lead count when `leads_retrieval` and Page lead access are granted.
+
+FanMesh deliberately does not retrieve lead `field_data` during this inventory phase. A form lead is not added to the direct audience until a later consent-aware ingestion flow maps the form's disclosure and opt-in fields. The UI also reports Page, Instagram, ad, and lead-form access gaps separately so a partial Meta grant is not shown as a complete sync.
+
+OAuth does not provide a portable list of every follower. Instagram basic media totals exclude ad-driven activity, so FanMesh keeps organic interactions and paid delivery in separate panels instead of combining them into a misleading benchmark.
 
 ## TikTok
 
