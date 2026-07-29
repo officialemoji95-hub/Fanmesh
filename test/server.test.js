@@ -33,7 +33,7 @@ async function dispatch({ method = "GET", url = "/", body = "", handler = handle
 test("health endpoint reports an operational service", async () => {
   const response = await dispatch({ url: "/api/health" });
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.3.0", database: "demo" });
+  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.4.0", database: "demo" });
 });
 
 test("auth session clearly reports unconfigured demo mode", async () => {
@@ -144,8 +144,49 @@ test("connections endpoint exposes authorized source contracts", async () => {
   const response = await dispatch({ url: "/api/v1/connections" });
   const body = response.json();
   assert.equal(response.statusCode, 200);
-  assert.ok(body.data.social.some((source) => source.platform === "instagram"));
+  assert.ok(body.data.social.some((source) => source.platform === "meta"));
+  assert.ok(body.data.social.some((source) => source.platform === "tiktok"));
+  assert.equal(body.data.social.every((source) => source.tokenPolicy.includes("encrypted")), true);
   assert.ok(body.data.imports.some((source) => source.platform === "csv"));
+});
+
+test("OAuth start requires a signed-in creator", async () => {
+  const handler = createRequestHandler({
+    authService: {
+      config: { configured: true },
+      async session() {
+        return { data: { configured: true, authenticated: false }, cookies: [] };
+      },
+    },
+    workspaceStore: {},
+    oauthService: { catalog() { return []; } },
+  });
+  const response = await dispatch({ url: "/api/v1/oauth/tiktok/start", handler });
+  assert.equal(response.statusCode, 401);
+});
+
+test("OAuth start redirects only after server-side session authorization", async () => {
+  const handler = createRequestHandler({
+    authService: {
+      config: { configured: true },
+      async session() {
+        return { data: { authenticated: true, user: { id: "user-1" }, accessToken: "private" }, cookies: ["session=refreshed"] };
+      },
+    },
+    workspaceStore: {},
+    oauthService: {
+      catalog() { return []; },
+      async begin(provider, session) {
+        assert.equal(provider, "tiktok");
+        assert.equal(session.user.id, "user-1");
+        return { redirectUrl: "https://www.tiktok.com/v2/auth/authorize/?state=test", cookies: ["oauth=state"] };
+      },
+    },
+  });
+  const response = await dispatch({ url: "/api/v1/oauth/tiktok/start", handler });
+  assert.equal(response.statusCode, 302);
+  assert.match(response.headers.location, /tiktok\.com/);
+  assert.deepEqual(response.headers["set-cookie"], ["session=refreshed", "oauth=state"]);
 });
 
 test("lead preview endpoint returns consent validation results", async () => {

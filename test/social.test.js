@@ -5,8 +5,9 @@ import { getConnectionCatalog, normalizeLead, planSocialExperiment, previewLeadI
 test("connection catalog distinguishes social accounts from lead imports", () => {
   const catalog = getConnectionCatalog();
   assert.ok(catalog.social.some((connection) => connection.platform === "tiktok"));
+  assert.ok(catalog.social.some((connection) => connection.platform === "meta"));
   assert.ok(catalog.imports.some((connection) => connection.platform === "meta_ads"));
-  assert.equal(catalog.social.find((connection) => connection.platform === "spotify").capabilities.includes("follower_identities"), false);
+  assert.equal(catalog.social.find((connection) => connection.platform === "x").capabilities.includes("follower_identities"), false);
 });
 
 test("lead normalization preserves consent provenance without returning raw contact keys", () => {

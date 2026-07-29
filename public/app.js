@@ -155,16 +155,58 @@ function capabilityLabel(capability) {
 
 function renderConnections(catalog) {
   const sourceGrid = document.querySelector("#source-grid");
-  const sources = [...catalog.social.slice(0, 4), ...catalog.imports.slice(0, 1)];
+  const sources = catalog.social;
   sourceGrid.innerHTML = sources.map((source) => `
-    <article class="source-card">
+    <article class="source-card ${source.status === "connected" ? "is-connected" : ""}">
       <div class="source-icon ${escapeHtml(source.platform)}">${escapeHtml(source.platform.slice(0, 2))}</div>
-      <div class="source-info"><strong>${escapeHtml(source.label)}</strong><span>${escapeHtml(source.status.replaceAll("_", " "))}</span></div>
-      <button class="icon-button source-action" data-toast="${escapeHtml(source.authMethod === "oauth" ? "OAuth connection setup is the next production step." : "Use an official export with consent provenance.")}" aria-label="About ${escapeHtml(source.label)}">•••</button>
+      <div class="source-info"><strong>${escapeHtml(source.label)}</strong><span>${escapeHtml(source.account?.name || source.status.replaceAll("_", " "))}</span></div>
+      <span class="connection-dot ${source.status === "connected" ? "live" : ""}" title="${escapeHtml(source.status.replaceAll("_", " "))}"></span>
       <p>${escapeHtml(source.caveat || "Import only records you are authorized to use.")}</p>
       <div class="source-tags">${source.capabilities.slice(0, 2).map((capability) => `<span>${escapeHtml(capabilityLabel(capability))}</span>`).join("")}</div>
+      ${source.status === "connected" ? `
+        <div class="connection-summary"><strong>${numberFormatter.format(source.account?.followers || 0)} followers</strong><span>${numberFormatter.format(source.account?.adAccounts || 0)} ad accounts</span></div>
+        <div class="connection-actions"><button class="connection-button" type="button" data-connection-sync="${escapeHtml(source.platform)}">Sync now</button><button class="connection-link" type="button" data-connection-disconnect="${escapeHtml(source.platform)}">Disconnect</button></div>
+      ` : source.configured && source.connectUrl ? `
+        <a class="connection-button" href="${escapeHtml(source.connectUrl)}">Connect ${escapeHtml(source.label)} ↗</a>
+      ` : `
+        <span class="connection-needed">Developer app needed</span>
+      `}
     </article>
   `).join("");
+}
+
+async function runConnectionAction(action, platform, button) {
+  const disconnecting = action === "disconnect";
+  if (disconnecting && !window.confirm(`Disconnect ${platform}? FanMesh will erase its stored authorization tokens.`)) return;
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = disconnecting ? "Disconnecting…" : "Syncing…";
+  try {
+    const response = await fetch(`/api/v1/oauth/${encodeURIComponent(platform)}/${action}`, {
+      method: disconnecting ? "DELETE" : "POST",
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error?.message || `${platform} ${action} failed`);
+    await loadDashboard();
+    showToast(disconnecting ? `${platform} disconnected.` : `${platform} data synced.`);
+  } catch (error) {
+    showToast(error.message);
+    button.disabled = false;
+    button.textContent = original;
+  }
+}
+
+function handleOAuthReturn() {
+  const parameters = new URLSearchParams(window.location.search);
+  const result = parameters.get("oauth");
+  if (!result) return;
+  const provider = parameters.get("provider") || "Platform";
+  if (result === "connected") {
+    showToast(`${provider} connected${parameters.get("account") ? ` as ${parameters.get("account")}` : ""}.`);
+  } else {
+    showToast(parameters.get("message") || `${provider} connection failed.`);
+  }
+  window.history.replaceState({}, "", `${window.location.pathname}${window.location.hash}`);
 }
 
 function renderSocialPlan(plan) {
@@ -293,13 +335,14 @@ async function bootstrapAccount() {
     }
     showAuthGate(false);
     await loadDashboard();
+    handleOAuthReturn();
   } catch (error) {
     showAuthGate(true);
     document.querySelector("#auth-message").textContent = error.message;
   }
 }
 
-document.addEventListener("click", (event) => {
+document.addEventListener("click", async (event) => {
   const toastTrigger = event.target.closest("[data-toast]");
   if (toastTrigger) showToast(toastTrigger.dataset.toast);
 
@@ -313,6 +356,12 @@ document.addEventListener("click", (event) => {
     const fan = fanRecords.find((item) => item.id === rowAction.dataset.fan);
     if (fan) showToast(`${fan.displayName}: score ${fan.fanScore.score}, led by ${fan.fanScore.strongestSignals[0]?.signal || "recent activity"}.`);
   }
+
+  const syncButton = event.target.closest("[data-connection-sync]");
+  if (syncButton) await runConnectionAction("sync", syncButton.dataset.connectionSync, syncButton);
+
+  const disconnectButton = event.target.closest("[data-connection-disconnect]");
+  if (disconnectButton) await runConnectionAction("disconnect", disconnectButton.dataset.connectionDisconnect, disconnectButton);
 
   if (event.target.closest(".mobile-menu")) document.querySelector(".sidebar").classList.toggle("open");
   if (event.target.closest(".nav a")) document.querySelector(".sidebar").classList.remove("open");

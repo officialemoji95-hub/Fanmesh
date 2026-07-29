@@ -2,7 +2,7 @@
 
 FanMesh is a creator-owned audience intelligence system. It turns scattered, permissioned signals into a unified fan view, an explainable **True Fan Score**, and practical activation plans across channels where fans have chosen to hear from a creator.
 
-This repository contains a deployable proof of concept. Without Supabase configuration it uses clearly labeled demo data; with Supabase configured it requires a creator account and loads only that user's private workspace. It intentionally does **not** connect to or automate any social platform yet.
+This repository contains a deployable proof of concept. Without Supabase configuration it uses clearly labeled demo data; with Supabase configured it requires a creator account and loads only that user's private workspace. Official OAuth adapters are available for Meta, TikTok, Snapchat, X, and Threads once the operator configures each platform's developer app.
 
 ## What works now
 
@@ -14,7 +14,9 @@ This repository contains a deployable proof of concept. Without Supabase configu
 - Explainable fan scoring API
 - Scored fan records and identity graph demonstration
 - Campaign sequence recommendations for releases, sales, and community growth
-- Social connection capability catalog (official OAuth boundaries, no tokens)
+- Official Meta, TikTok, Snapchat, X, and Threads OAuth connection flows
+- Signed OAuth state, X PKCE, server-side code exchange, and encrypted token storage
+- Authorized creator/business account discovery, aggregate metrics, manual sync, and disconnect
 - Consent-checked CSV import with preview, deterministic identity keys, deduplication, provenance, and private-workspace persistence
 - Measured social distribution experiment planner with holdout cohorts
 - OpenAPI document at `/api/v1/openapi.json`
@@ -39,6 +41,8 @@ Open [http://localhost:3000](http://localhost:3000).
 2. Run [`supabase/migrations/202607290001_initial.sql`](supabase/migrations/202607290001_initial.sql) in its SQL Editor.
 3. Set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` from the project's API settings.
 4. Restart FanMesh and create the first account from the sign-up screen.
+
+To activate platform buttons, configure `APP_BASE_URL`, a stable 32-byte `OAUTH_TOKEN_ENCRYPTION_KEY`, and the selected provider's developer app ID/secret in Render. See [docs/OAUTH-CONNECTIONS.md](docs/OAUTH-CONNECTIONS.md).
 
 Never add a Supabase dashboard password or `service_role` key. See [docs/AUTH-AND-SUPABASE.md](docs/AUTH-AND-SUPABASE.md).
 
@@ -79,7 +83,7 @@ Every score includes its component points and strongest signals. Sensitive trait
 
 ## The production direction
 
-Accounts, private workspaces, and consented audience imports are now implemented. The next provider milestone is the first official Meta OAuth connection and webhook-backed lead sync. The social-first slice is documented in [docs/SOCIAL-PHASE-1.md](docs/SOCIAL-PHASE-1.md), and the CSV contract is in [docs/AUDIENCE-IMPORT.md](docs/AUDIENCE-IMPORT.md). See [docs/AUTH-AND-SUPABASE.md](docs/AUTH-AND-SUPABASE.md), [docs/PRODUCT.md](docs/PRODUCT.md), [docs/API.md](docs/API.md), and [docs/SECURITY.md](docs/SECURITY.md).
+Accounts, private workspaces, consented audience imports, and the multi-provider OAuth foundation are implemented. The next provider milestone is webhook-backed Meta lead sync after live app authorization. See [docs/OAUTH-CONNECTIONS.md](docs/OAUTH-CONNECTIONS.md), [docs/SOCIAL-PHASE-1.md](docs/SOCIAL-PHASE-1.md), [docs/AUDIENCE-IMPORT.md](docs/AUDIENCE-IMPORT.md), [docs/AUTH-AND-SUPABASE.md](docs/AUTH-AND-SUPABASE.md), [docs/PRODUCT.md](docs/PRODUCT.md), [docs/API.md](docs/API.md), and [docs/SECURITY.md](docs/SECURITY.md).
 
 ## Non-goals
 
@@ -100,7 +104,7 @@ Its advantage is ownership, timing, segmentation, attribution, and genuine early
 3. Select the repository and apply `render.yaml`.
 4. Confirm `/api/health` returns `{"status":"ok", ...}` after deployment.
 
-Demo mode needs no secrets. Account mode requires `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` in Render's secret manager.
+Demo mode needs no secrets. Account mode requires `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` in Render's secret manager. OAuth additionally requires `APP_BASE_URL`, `OAUTH_TOKEN_ENCRYPTION_KEY`, and each enabled provider's developer app credentials.
 
 ## License
 
