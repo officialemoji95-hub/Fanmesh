@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="FanMesh unifies consented fan relationships and turns them into useful audience intelligence.">
     <title>FanMesh — Own the relationship</title>
-    <link rel="stylesheet" href="/styles.css?v=0.3.0">
+    <link rel="stylesheet" href="/styles.css?v=0.4.0">
   </head>
   <body>
     <section class="auth-gate" id="auth-gate" aria-labelledby="auth-title" hidden>
@@ -64,7 +64,7 @@
           </div>
           <div class="top-actions">
             <span class="demo-pill" id="data-mode-pill"><i></i> Checking data</span>
-            <button class="button secondary" data-toast="Connection flow will be enabled with platform OAuth.">＋ Connect source</button>
+            <button class="button secondary" data-scroll="connections">＋ Connect source</button>
             <button class="button primary" data-scroll="campaign">Plan activation ↗</button>
           </div>
         </header>
@@ -107,13 +107,14 @@
 
         <section class="panel social-launchpad" id="connections">
           <div class="panel-heading">
-            <div><p class="eyebrow">Social launchpad</p><h2>Reach the people you are allowed to reach</h2></div>
-            <span class="status good">Consent-first</span>
+            <div><p class="eyebrow">Account connections</p><h2>Connect once. Keep your signals moving.</h2></div>
+            <span class="status good">Official APIs only</span>
           </div>
-          <p class="panel-copy">Connect creator accounts through official OAuth, bring in first-party ad leads, and test delivery with a holdout. FanMesh can improve eligible reach and attribution; no tool can guarantee a feed impression for every follower.</p>
+          <p class="panel-copy">Authorize each creator or business account through its official consent screen. FanMesh encrypts the returned tokens, discovers the assets you approved, and syncs aggregate audience and ad-account signals without collecting your platform passwords.</p>
           <div class="source-grid" id="source-grid" aria-live="polite">
             <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
           </div>
+          <p class="connection-setup-note">Developer apps must be configured before a Connect button activates. Platform review determines which profile, publishing, advertising and lead permissions are available.</p>
           <section class="import-workbench" aria-labelledby="import-title">
             <div class="import-intro">
               <p class="eyebrow">Authorized audience import</p>
@@ -286,6 +287,6 @@
       </main>
     </div>
     <div class="toast" role="status" aria-live="polite"></div>
-    <script src="/app.js?v=0.3.0" type="module"></script>
+    <script src="/app.js?v=0.4.0" type="module"></script>
   </body>
 </html>
