@@ -8,6 +8,23 @@
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
+    <section class="auth-gate" id="auth-gate" aria-labelledby="auth-title" hidden>
+      <div class="auth-card">
+        <span class="brand auth-brand"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>Fan<span>Mesh</span></span></span>
+        <p class="eyebrow">Creator account</p>
+        <h1 id="auth-title">Sign in to your audience.</h1>
+        <p id="auth-copy">Your workspace and fan data stay private to your account.</p>
+        <form id="auth-form" data-mode="signin">
+          <label id="display-name-field" hidden>Creator or team name<input name="displayName" type="text" autocomplete="name" minlength="2" maxlength="80"></label>
+          <label>Email<input name="email" type="email" autocomplete="email" required maxlength="254"></label>
+          <label>Password<input name="password" type="password" autocomplete="current-password" required minlength="8" maxlength="128"></label>
+          <p class="auth-message" id="auth-message" role="status" aria-live="polite"></p>
+          <button class="button primary" type="submit">Sign in ↗</button>
+        </form>
+        <button class="auth-toggle" id="auth-toggle" type="button">New to FanMesh? Create an account</button>
+        <small>FanMesh never asks for your social-media or Supabase dashboard password.</small>
+      </div>
+    </section>
     <div class="app-shell">
       <aside class="sidebar">
         <a class="brand" href="#top" aria-label="FanMesh dashboard">
@@ -18,7 +35,7 @@
         <nav class="nav" aria-label="Primary navigation">
           <p class="eyebrow">Workspace</p>
           <a class="active" href="#overview"><span class="nav-icon">⌁</span> Overview</a>
-          <a href="#audience"><span class="nav-icon">◎</span> Audience <b>5.8k</b></a>
+          <a href="#audience"><span class="nav-icon">◎</span> Audience <b id="audience-count">—</b></a>
           <a href="#campaign"><span class="nav-icon">↗</span> Activations</a>
           <a href="#connections"><span class="nav-icon">⌘</span> Connections</a>
           <a href="/api/v1/openapi.json" target="_blank"><span class="nav-icon">{ }</span> Developer API</a>
@@ -26,15 +43,15 @@
 
         <section class="capture-card">
           <span class="pulse-dot"></span>
-          <p>Fan capture is live</p>
-          <strong>32 new identities</strong>
-          <span>in the last 7 days</span>
+          <p id="capture-state">Audience database</p>
+          <strong id="capture-count">Loading…</strong>
+          <span id="capture-note">Checking workspace</span>
         </section>
 
         <div class="profile">
-          <span class="avatar">V</span>
-          <span><strong>Vero</strong><small>Creator workspace</small></span>
-          <button aria-label="Open workspace menu">•••</button>
+          <span class="avatar" id="profile-avatar">F</span>
+          <span><strong id="profile-name">FanMesh</strong><small id="profile-workspace">Loading workspace</small></span>
+          <button id="signout-button" aria-label="Sign out" title="Sign out" hidden>↪</button>
         </div>
       </aside>
 
@@ -46,11 +63,15 @@
             <h1>Your audience, finally visible.</h1>
           </div>
           <div class="top-actions">
-            <span class="demo-pill"><i></i> Demo data</span>
+            <span class="demo-pill" id="data-mode-pill"><i></i> Checking data</span>
             <button class="button secondary" data-toast="Connection flow will be enabled with platform OAuth.">＋ Connect source</button>
             <button class="button primary" data-scroll="campaign">Plan activation ↗</button>
           </div>
         </header>
+
+        <section class="setup-banner" id="setup-banner" hidden>
+          <strong>Demo mode:</strong> add your Supabase project URL and public publishable key in Render to activate accounts and private workspace data.
+        </section>
 
         <section class="notice" aria-label="Product principle">
           <span class="notice-icon">✦</span>
@@ -64,23 +85,23 @@
         <section class="metrics" id="overview" aria-label="Audience metrics">
           <article class="metric-card">
             <div class="metric-label"><span>Potential audience</span><i class="metric-icon lavender">◎</i></div>
-            <strong id="total-followers">118,000</strong>
-            <p><b class="positive">4 platforms</b> connected</p>
+            <strong id="total-followers">—</strong>
+            <p><b class="positive" id="connected-platforms">—</b> connected</p>
           </article>
           <article class="metric-card">
             <div class="metric-label"><span>Identified fans</span><i class="metric-icon green">⌁</i></div>
-            <strong id="identified-fans">5,842</strong>
-            <p><b class="positive">4.95%</b> identity coverage</p>
+            <strong id="identified-fans">—</strong>
+            <p><b class="positive" id="identity-rate">—</b> identity coverage</p>
           </article>
           <article class="metric-card">
             <div class="metric-label"><span>Direct connections</span><i class="metric-icon amber">↗</i></div>
-            <strong id="direct-connections">1,926</strong>
-            <p><b class="positive">32.97%</b> of identified fans</p>
+            <strong id="direct-connections">—</strong>
+            <p><b class="positive" id="direct-rate">—</b> of identified fans</p>
           </article>
           <article class="metric-card risk">
             <div class="metric-label"><span>Reach health</span><i class="metric-icon coral">!</i></div>
-            <strong id="view-rate">0.11%</strong>
-            <p><b>127</b> average views</p>
+            <strong id="view-rate">—</strong>
+            <p><b id="average-views">—</b> average views</p>
           </article>
         </section>
 
@@ -134,15 +155,15 @@
             <p class="panel-copy">Your audience lives behind platform gates. This view shows how much of that relationship you currently control.</p>
             <div class="reach-bars">
               <div>
-                <span><b>Total followers</b><strong>118,000</strong></span>
+                <span><b>Total followers</b><strong id="reach-followers">—</strong></span>
                 <i><em class="bar followers"></em></i>
               </div>
               <div>
-                <span><b>Identified</b><strong>5,842</strong></span>
+                <span><b>Identified</b><strong id="reach-identified">—</strong></span>
                 <i><em class="bar identified"></em></i>
               </div>
               <div>
-                <span><b>Directly reachable</b><strong>1,926</strong></span>
+                <span><b>Directly reachable</b><strong id="reach-direct">—</strong></span>
                 <i><em class="bar reachable"></em></i>
               </div>
             </div>
@@ -165,12 +186,12 @@
                   <span class="platform-node spotify" title="Spotify">≋</span>
                   <span class="platform-node tiktok" title="TikTok">♪</span>
                   <div class="orbit orbit-inner">
-                    <div class="fan-core"><span>5.8k</span><small>known fans</small></div>
+                    <div class="fan-core"><span id="orbit-fans">—</span><small>known fans</small></div>
                   </div>
                 </div>
               </div>
             </div>
-            <p class="orbit-caption"><span></span> 1,214 identities appear on 2+ platforms</p>
+            <p class="orbit-caption"><span></span> <b id="cross-platform-count">—</b> identities appear on 2+ platforms</p>
           </article>
         </section>
 
@@ -198,7 +219,7 @@
               <tbody id="fan-table"><tr><td colspan="6" class="loading">Loading audience…</td></tr></tbody>
             </table>
           </div>
-          <div class="table-footer"><span>Showing prototype records</span><button data-toast="Pagination will activate with the production database.">View all audience →</button></div>
+          <div class="table-footer"><span id="audience-mode">Loading workspace records</span><button data-toast="Pagination will activate as your audience grows.">View all audience →</button></div>
         </section>
 
         <section class="campaign-grid" id="campaign">

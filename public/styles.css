@@ -250,6 +250,26 @@ main > footer p { margin: 0; }
 main > footer a { margin-left: auto; color: var(--purple); font-weight: 700; }
 .toast { position: fixed; z-index: 20; right: 24px; bottom: 24px; max-width: 330px; padding: 12px 15px; color: #fff; background: #242529; border: 1px solid #3a3b40; border-radius: 8px; box-shadow: 0 12px 35px rgba(0,0,0,.18); font-size: 11px; opacity: 0; transform: translateY(10px); pointer-events: none; transition: .22s; }
 .toast.show { opacity: 1; transform: translateY(0); }
+[hidden] { display: none !important; }
+body.auth-open { overflow: hidden; }
+.auth-gate { position: fixed; z-index: 50; inset: 0; display: grid; place-items: center; padding: 22px; background: radial-gradient(circle at 70% 10%, rgba(117,99,237,.2), transparent 36%), #18191c; }
+.auth-card { width: min(100%, 440px); padding: 34px; color: var(--ink); background: var(--white); border: 1px solid rgba(255,255,255,.1); border-radius: 18px; box-shadow: 0 28px 80px rgba(0,0,0,.35); }
+.auth-brand { margin-bottom: 34px; color: var(--ink); }
+.auth-brand > span:last-child span { color: #83ad23; }
+.auth-card h1 { margin-bottom: 8px; font-size: 28px; }
+.auth-card > p:not(.eyebrow) { margin: 0 0 23px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.auth-card form { display: grid; gap: 12px; }
+.auth-card label { display: grid; gap: 6px; color: #5e5e65; font-size: 10px; font-weight: 700; }
+.auth-card input { width: 100%; padding: 12px; border: 1px solid #dcdad3; border-radius: 8px; outline: none; background: #fbfaf7; color: var(--ink); }
+.auth-card input:focus { border-color: var(--purple); box-shadow: 0 0 0 3px rgba(117,99,237,.1); }
+.auth-card .button { min-height: 44px; margin-top: 3px; }
+.auth-message { min-height: 16px; margin: 0; color: var(--coral); font-size: 10px; }
+.auth-message.success { color: var(--green); }
+.auth-toggle { width: 100%; margin: 16px 0; padding: 0; border: 0; background: transparent; color: var(--purple); cursor: pointer; font-size: 11px; font-weight: 700; }
+.auth-card > small { display: block; padding-top: 14px; border-top: 1px solid var(--line); color: #99999f; font-size: 9px; line-height: 1.5; }
+.setup-banner { margin-top: 18px; padding: 11px 14px; color: #70591c; background: #fff7da; border: 1px solid #f0dda4; border-radius: 9px; font-size: 10px; line-height: 1.5; }
+.demo-pill.live i { background: var(--green); box-shadow: 0 0 0 4px rgba(29,143,98,.08); }
+.profile button:not([hidden]) { display: block; }
 
 @media (max-width: 1050px) {
   .sidebar { width: 208px; }
@@ -282,6 +302,7 @@ main > footer a { margin-left: auto; color: var(--purple); font-weight: 700; }
 }
 
 @media (max-width: 480px) {
+  .auth-card { padding: 26px 20px; }
   h1 { font-size: 22px; }
   .breadcrumb { display: none; }
   .topbar { gap: 11px; }

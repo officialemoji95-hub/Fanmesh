@@ -2,11 +2,14 @@
 
 FanMesh is a creator-owned audience intelligence system. It turns scattered, permissioned signals into a unified fan view, an explainable **True Fan Score**, and practical activation plans across channels where fans have chosen to hear from a creator.
 
-This repository contains a deployable proof of concept. It uses demo data and intentionally does **not** connect to or automate any social platform yet.
+This repository contains a deployable proof of concept. Without Supabase configuration it uses clearly labeled demo data; with Supabase configured it requires a creator account and loads only that user's private workspace. It intentionally does **not** connect to or automate any social platform yet.
 
 ## What works now
 
 - Responsive creator dashboard
+- Supabase email/password accounts with server-managed HTTP-only sessions
+- Private creator workspaces with PostgreSQL row-level security
+- Live workspace dashboard mode that starts at zero instead of showing invented audience data
 - Audience health and reach-gap analysis
 - Explainable fan scoring API
 - Scored fan records and identity graph demonstration
@@ -29,6 +32,15 @@ npm start
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
+
+## Activate accounts and real workspace data
+
+1. Create a Supabase project.
+2. Run [`supabase/migrations/202607290001_initial.sql`](supabase/migrations/202607290001_initial.sql) in its SQL Editor.
+3. Set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` from the project's API settings.
+4. Restart FanMesh and create the first account from the sign-up screen.
+
+Never add a Supabase dashboard password or `service_role` key. See [docs/AUTH-AND-SUPABASE.md](docs/AUTH-AND-SUPABASE.md).
 
 ## API preview
 
@@ -67,7 +79,7 @@ Every score includes its component points and strongest signals. Sensitive trait
 
 ## The production direction
 
-The next milestone replaces demo data with organizations, authentication, PostgreSQL persistence, consent records, official OAuth connections, imports, and webhooks. The social-first slice is documented in [docs/SOCIAL-PHASE-1.md](docs/SOCIAL-PHASE-1.md). See [docs/PRODUCT.md](docs/PRODUCT.md), [docs/API.md](docs/API.md), and [docs/SECURITY.md](docs/SECURITY.md).
+Accounts, private workspaces, and the initial PostgreSQL schema are now implemented. The next milestone commits consented imports into those workspaces and adds the first official OAuth connection. The social-first slice is documented in [docs/SOCIAL-PHASE-1.md](docs/SOCIAL-PHASE-1.md). See [docs/AUTH-AND-SUPABASE.md](docs/AUTH-AND-SUPABASE.md), [docs/PRODUCT.md](docs/PRODUCT.md), [docs/API.md](docs/API.md), and [docs/SECURITY.md](docs/SECURITY.md).
 
 ## Non-goals
 
@@ -88,7 +100,7 @@ Its advantage is ownership, timing, segmentation, attribution, and genuine early
 3. Select the repository and apply `render.yaml`.
 4. Confirm `/api/health` returns `{"status":"ok", ...}` after deployment.
 
-The current prototype needs no secrets or database. Production connections will add environment variables through Render's secret manager.
+Demo mode needs no secrets. Account mode requires `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` in Render's secret manager.
 
 ## License
 

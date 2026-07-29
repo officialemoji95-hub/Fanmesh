@@ -1,12 +1,29 @@
 # FanMesh API v0.1
 
-The prototype serves JSON under `/api`. Responses use `{ "data": ... }` for successful resources and `{ "error": { "message": ... } }` for errors. Prototype endpoints are unauthenticated and use demo data; production endpoints will require organization-scoped credentials.
+The prototype serves JSON under `/api`. Responses use `{ "data": ... }` for successful resources and `{ "error": { "message": ... } }` for errors. When Supabase is configured, workspace endpoints require the secure creator session cookie and PostgreSQL row-level security isolates every workspace. When Supabase is unconfigured, dashboard reads use clearly labeled demo data.
 
 ## Endpoints
 
 ### `GET /api/health`
 
 Render health check. Returns the service name and version.
+
+### Account endpoints
+
+- `GET /api/v1/auth/session` returns whether Supabase is configured and whether the request has an authenticated creator session.
+- `POST /api/v1/auth/signup` accepts `displayName`, `email`, and `password` and provisions a workspace through the database trigger.
+- `POST /api/v1/auth/signin` establishes HTTP-only access and refresh cookies.
+- `POST /api/v1/auth/signout` revokes the session and clears both cookies.
+
+Passwords and tokens are never returned to browser JavaScript or stored in local storage.
+
+### `GET /api/v1/dashboard`
+
+Returns the current workspace, insights, scored fans, and connection statuses in one authenticated request.
+
+### `GET /api/v1/workspace`
+
+Returns the signed-in user's workspace and role.
 
 ### `GET /api/v1/fans?limit=20`
 
@@ -54,7 +71,7 @@ Returns the machine-readable OpenAPI 3.1 preview.
 
 ## Production API requirements
 
-- OAuth or scoped API keys; never social account passwords
+- Supabase creator sessions, OAuth, or scoped API keys; never social account passwords
 - Organization isolation on every record and query
 - Idempotency keys for event and campaign writes
 - Cursor pagination and stable object IDs
