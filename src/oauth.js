@@ -72,6 +72,22 @@ function text(value, maxLength = 300) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
 }
 
+function nonNegativeNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, number) : 0;
+}
+
+function safeHttpsUrl(value, allowedHost) {
+  try {
+    const url = new URL(text(value, 1000));
+    if (url.protocol !== "https:") return "";
+    if (url.hostname !== allowedHost && !url.hostname.endsWith(`.${allowedHost}`)) return "";
+    return url.href;
+  } catch {
+    return "";
+  }
+}
+
 function configuredBaseUrl(environment) {
   const value = text(environment.APP_BASE_URL, 500).replace(/\/$/, "");
   if (!value) return "";
@@ -469,6 +485,63 @@ async function syncTikTok(token, fetchImpl) {
   });
   if (payload.error?.code && payload.error.code !== "ok") throw new OAuthError(text(payload.error.message, 240) || "TikTok profile sync failed", 502);
   const user = payload.data?.user || {};
+  let recentVideos = [];
+  if (token.grantedScopes.includes("video.list")) {
+    const videoFields = [
+      "id",
+      "create_time",
+      "share_url",
+      "video_description",
+      "duration",
+      "title",
+      "like_count",
+      "comment_count",
+      "share_count",
+      "view_count",
+    ].join(",");
+    const videoPayload = await platformRequest(fetchImpl, `https://open.tiktokapis.com/v2/video/list/?fields=${encodeURIComponent(videoFields)}`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token.accessToken}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ max_count: 20 }),
+    });
+    if (videoPayload.error?.code && videoPayload.error.code !== "ok") {
+      throw new OAuthError(text(videoPayload.error.message, 240) || "TikTok video sync failed", 502);
+    }
+    recentVideos = (Array.isArray(videoPayload.data?.videos) ? videoPayload.data.videos : [])
+      .slice(0, 20)
+      .map((video) => {
+        const createdSeconds = nonNegativeNumber(video.create_time);
+        return {
+          id: text(video.id, 80),
+          title: text(video.title || video.video_description, 150) || "Untitled TikTok post",
+          description: text(video.video_description, 150),
+          shareUrl: safeHttpsUrl(video.share_url, "tiktok.com"),
+          createdAt: createdSeconds ? new Date(createdSeconds * 1000).toISOString() : null,
+          duration: Math.round(nonNegativeNumber(video.duration)),
+          views: Math.round(nonNegativeNumber(video.view_count)),
+          likes: Math.round(nonNegativeNumber(video.like_count)),
+          comments: Math.round(nonNegativeNumber(video.comment_count)),
+          shares: Math.round(nonNegativeNumber(video.share_count)),
+        };
+      })
+      .filter((video) => video.id);
+  }
+  const totalViews = recentVideos.reduce((sum, video) => sum + video.views, 0);
+  const totalLikes = recentVideos.reduce((sum, video) => sum + video.likes, 0);
+  const totalComments = recentVideos.reduce((sum, video) => sum + video.comments, 0);
+  const totalShares = recentVideos.reduce((sum, video) => sum + video.shares, 0);
+  const sortedViews = recentVideos.map((video) => video.views).sort((first, second) => first - second);
+  const middle = Math.floor(sortedViews.length / 2);
+  const medianViews = sortedViews.length
+    ? Math.round(sortedViews.length % 2 ? sortedViews[middle] : (sortedViews[middle - 1] + sortedViews[middle]) / 2)
+    : 0;
+  const averageViews = recentVideos.length ? Math.round(totalViews / recentVideos.length) : 0;
+  const engagementRate = totalViews
+    ? Math.round(((totalLikes + totalComments + totalShares) / totalViews) * 10000) / 100
+    : 0;
   return {
     externalAccountId: user.open_id || token.openId,
     publicData: { profile: {
@@ -480,9 +553,21 @@ async function syncTikTok(token, fetchImpl) {
       following: Number(user.following_count) || 0,
       likes: Number(user.likes_count) || 0,
       videos: Number(user.video_count) || 0,
-    } },
+    }, recentVideos },
     privateData: {},
-    metrics: { totalFollowers: Number(user.follower_count) || 0, averageViews: 0 },
+    metrics: {
+      totalFollowers: Math.round(nonNegativeNumber(user.follower_count)),
+      averageViews,
+      medianViews,
+      engagementRate,
+      recentVideoCount: recentVideos.length,
+      totalRecentViews: totalViews,
+      recentLikes: totalLikes,
+      recentComments: totalComments,
+      recentShares: totalShares,
+      latestVideoAt: recentVideos[0]?.createdAt || null,
+      performanceWindow: "latest_20_public_posts",
+    },
   };
 }
 
