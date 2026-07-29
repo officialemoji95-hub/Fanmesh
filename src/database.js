@@ -37,6 +37,26 @@ export function toFanRecord(row = {}) {
   };
 }
 
+function publicConnectionState(row = {}) {
+  const publicData = row.metadata?.public || {};
+  const profile = publicData.profile || {};
+  const organizations = Array.isArray(publicData.organizations) ? publicData.organizations : [];
+  const metrics = row.metadata?.metrics || {};
+  const accountName = profile.name || profile.username || organizations[0]?.name || null;
+  return {
+    status: row.status || "not_connected",
+    externalAccountId: row.external_account_id || null,
+    scopes: Array.isArray(row.scopes) ? row.scopes : [],
+    account: accountName ? {
+      name: accountName,
+      username: profile.username || null,
+      followers: Number(metrics.totalFollowers) || 0,
+      adAccounts: Number(metrics.adAccounts) || 0,
+      syncedAt: row.metadata?.syncedAt || row.updated_at || null,
+    } : null,
+  };
+}
+
 function queryValue(value) {
   return encodeURIComponent(String(value));
 }
@@ -99,7 +119,7 @@ export function createWorkspaceStore({ environment = process.env, fetchImpl = gl
     const [fanRows, snapshots, connectionRows] = await Promise.all([
       request(`/rest/v1/fans?select=id,display_name,location,channels,consented_channels,last_seen,metrics&workspace_id=eq.${workspaceId}&order=last_seen.desc.nullslast&limit=${Math.min(100, Math.max(1, limit))}`, token),
       request(`/rest/v1/audience_snapshots?select=total_followers,average_views,identified_fans,direct_connections,connected_platforms,captured_at&workspace_id=eq.${workspaceId}&order=captured_at.desc&limit=1`, token),
-      request(`/rest/v1/source_connections?select=platform,status,updated_at&workspace_id=eq.${workspaceId}`, token),
+      request(`/rest/v1/source_connections?select=platform,status,external_account_id,scopes,metadata,updated_at&workspace_id=eq.${workspaceId}`, token),
     ]);
     const fans = (fanRows || []).map(toFanRecord);
     const latest = snapshots?.[0];
@@ -119,7 +139,7 @@ export function createWorkspaceStore({ environment = process.env, fetchImpl = gl
       workspace,
       fans,
       snapshot,
-      connectionStatuses: Object.fromEntries((connectionRows || []).map((row) => [row.platform, row.status])),
+      connectionStatuses: Object.fromEntries((connectionRows || []).map((row) => [row.platform, publicConnectionState(row)])),
     };
   }
 
@@ -308,5 +328,81 @@ export function createWorkspaceStore({ environment = process.env, fetchImpl = gl
     }
   }
 
-  return Object.freeze({ commitLeadImport, config, getDashboard, saveExperiment, workspaceFor });
+  async function getSourceConnection(user, token, platform) {
+    const workspace = await workspaceFor(user, token);
+    const rows = await request(
+      `/rest/v1/source_connections?select=platform,status,external_account_id,scopes,metadata,created_at,updated_at&workspace_id=eq.${queryValue(workspace.id)}&platform=eq.${queryValue(platform)}&limit=1`,
+      token,
+    );
+    return rows?.[0] || null;
+  }
+
+  async function refreshAudienceSnapshot(workspace, token) {
+    const workspaceId = queryValue(workspace.id);
+    const [connections, fanRows] = await Promise.all([
+      request(`/rest/v1/source_connections?select=platform,status,metadata&workspace_id=eq.${workspaceId}`, token),
+      request(`/rest/v1/fans?select=id,consented_channels&workspace_id=eq.${workspaceId}`, token),
+    ]);
+    const connected = (connections || []).filter((row) => row.status === "connected");
+    const totalFollowers = connected.reduce((sum, row) => sum + Math.max(0, Number(row.metadata?.metrics?.totalFollowers) || 0), 0);
+    const averageViewsValues = connected
+      .map((row) => Number(row.metadata?.metrics?.averageViews) || 0)
+      .filter((value) => value > 0);
+    const averageViews = averageViewsValues.length
+      ? Math.round(averageViewsValues.reduce((sum, value) => sum + value, 0) / averageViewsValues.length)
+      : 0;
+    const fans = fanRows || [];
+    await request("/rest/v1/audience_snapshots", token, {
+      method: "POST",
+      prefer: "return=minimal",
+      body: [{
+        workspace_id: workspace.id,
+        total_followers: totalFollowers,
+        average_views: averageViews,
+        identified_fans: fans.length,
+        direct_connections: fans.filter((fan) => Array.isArray(fan.consented_channels) && fan.consented_channels.length).length,
+        connected_platforms: connected.length,
+      }],
+    });
+  }
+
+  async function saveSourceConnection(user, token, connection) {
+    const workspace = await workspaceFor(user, token);
+    const updatedAt = new Date().toISOString();
+    const rows = await request(
+      "/rest/v1/source_connections?on_conflict=workspace_id,platform&select=platform,status,external_account_id,scopes,metadata,updated_at",
+      token,
+      {
+        method: "POST",
+        prefer: "resolution=merge-duplicates,return=representation",
+        body: [{
+          workspace_id: workspace.id,
+          platform: connection.platform,
+          status: connection.status,
+          external_account_id: connection.externalAccountId || null,
+          scopes: Array.isArray(connection.scopes) ? connection.scopes : [],
+          metadata: connection.metadata || {},
+          updated_at: updatedAt,
+        }],
+      },
+    );
+    await refreshAudienceSnapshot(workspace, token);
+    return publicConnectionState(rows?.[0] || {
+      status: connection.status,
+      external_account_id: connection.externalAccountId,
+      scopes: connection.scopes,
+      metadata: connection.metadata,
+      updated_at: updatedAt,
+    });
+  }
+
+  return Object.freeze({
+    commitLeadImport,
+    config,
+    getDashboard,
+    getSourceConnection,
+    saveExperiment,
+    saveSourceConnection,
+    workspaceFor,
+  });
 }

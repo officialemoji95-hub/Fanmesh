@@ -4,35 +4,35 @@ export const SOCIAL_PLATFORMS = ["instagram", "facebook", "tiktok", "youtube", "
 export const LEAD_SOURCES = ["meta_ads", "facebook_export", "instagram_export", "tiktok_ads", "google_ads", "youtube_export", "csv"];
 
 const PLATFORM_CAPABILITIES = {
-  instagram: {
-    label: "Instagram / Meta",
+  meta: {
+    label: "Meta",
     authMethod: "oauth",
-    capabilities: ["native_publish", "aggregate_analytics", "creator_insights"],
-    caveat: "Follower identities are not assumed; only authorized account data and fan opt-ins are linked.",
-  },
-  facebook: {
-    label: "Facebook / Meta",
-    authMethod: "oauth",
-    capabilities: ["native_publish", "aggregate_analytics", "creator_insights"],
-    caveat: "Page and ad data remain scoped to the authorized assets; feed delivery is still platform-controlled.",
+    capabilities: ["facebook_pages", "instagram_insights", "meta_ad_accounts", "lead_access"],
+    caveat: "Facebook Pages, Instagram professional accounts and ad assets remain limited to the scopes Meta approves.",
   },
   tiktok: {
     label: "TikTok",
     authMethod: "oauth",
-    capabilities: ["native_publish", "aggregate_analytics"],
-    caveat: "Publishing requires creator authorization and the platform's approved posting access.",
+    capabilities: ["creator_profile", "follower_totals", "video_metadata"],
+    caveat: "Creator OAuth and TikTok for Business advertising access are separate authorizations.",
   },
-  youtube: {
-    label: "YouTube",
+  snapchat: {
+    label: "Snapchat",
     authMethod: "oauth",
-    capabilities: ["native_publish", "aggregate_analytics", "content_metadata"],
-    caveat: "Subscriber and viewer data are permissioned; reports are not a promise that every subscriber sees a post.",
+    capabilities: ["organizations", "ad_accounts", "campaign_reporting"],
+    caveat: "Public Profile insights require Snapchat allowlisting in addition to Marketing API authorization.",
   },
-  spotify: {
-    label: "Spotify",
+  x: {
+    label: "X",
     authMethod: "oauth",
-    capabilities: ["catalog_metadata", "aggregate_analytics"],
-    caveat: "Spotify exposes aggregate following information for artists, not a portable list of every follower identity.",
+    capabilities: ["creator_profile", "public_metrics", "post_metadata"],
+    caveat: "X Ads requires separate approval and OAuth 1.0a even after the organic account is connected.",
+  },
+  threads: {
+    label: "Threads",
+    authMethod: "oauth",
+    capabilities: ["creator_profile", "content_metadata", "creator_insights"],
+    caveat: "Threads is a separate developer product and authorization flow from Facebook and Instagram.",
   },
 };
 
@@ -94,13 +94,20 @@ function invalid(index, reason) {
   return { row: index + 1, reason };
 }
 
-export function getConnectionCatalog(statuses = {}) {
-  const social = Object.entries(PLATFORM_CAPABILITIES).map(([platform, details]) => ({
-    platform,
-    ...details,
-    status: statuses[platform] || "not_connected",
-    tokenPolicy: "FanMesh stores connection metadata only; access tokens belong in the production secret store.",
-  }));
+export function getConnectionCatalog(statuses = {}, configuredProviders = []) {
+  const baseProviders = configuredProviders.length
+    ? configuredProviders
+    : Object.entries(PLATFORM_CAPABILITIES).map(([platform, details]) => ({ platform, ...details, configured: false }));
+  const social = baseProviders.map((details) => {
+    const connection = statuses[details.platform];
+    const state = typeof connection === "string" ? { status: connection } : connection || {};
+    return {
+      ...details,
+      status: state.status || details.status || "not_connected",
+      account: state.account || details.account || null,
+      tokenPolicy: details.tokenPolicy || "Access and refresh tokens are encrypted before storage and never returned to the browser.",
+    };
+  });
   const imports = Object.entries(IMPORT_CAPABILITIES).map(([platform, details]) => ({
     platform,
     ...details,

@@ -6,11 +6,12 @@ import { AuthError, createAuthService } from "./auth.js";
 import { createWorkspaceStore, DatabaseError } from "./database.js";
 import { audienceSnapshot, demoFans } from "./demo-data.js";
 import { buildInsights, recommendCampaign } from "./insights.js";
+import { createOAuthService } from "./oauth.js";
 import { openApiDocument } from "./openapi.js";
 import { getConnectionCatalog, planSocialExperiment, previewLeadImport } from "./social.js";
 import { scoreAudience, scoreFan } from "./scoring.js";
 
-const APP_VERSION = "0.3.0";
+const APP_VERSION = "0.4.0";
 const port = Number(process.env.PORT || 3000);
 const publicDirectory = fileURLToPath(new URL("../public", import.meta.url));
 const maxBodyBytes = 2 * 1024 * 1024;
@@ -43,6 +44,16 @@ function sendError(response, error, extraHeaders = {}) {
     ? error.statusCode
     : error.statusCode || 400;
   sendJson(response, statusCode, { error: { message: error.message || "Request failed" } }, extraHeaders);
+}
+
+function sendRedirect(response, location, cookies = []) {
+  response.writeHead(302, {
+    location,
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    ...(cookies.length ? { "set-cookie": cookies } : {}),
+  });
+  response.end();
 }
 
 async function readJson(request) {
@@ -102,7 +113,10 @@ function publicSession(session) {
 export function createRequestHandler({
   authService = createAuthService(),
   workspaceStore = createWorkspaceStore(),
+  oauthService: providedOAuthService,
 } = {}) {
+  const oauthService = providedOAuthService || createOAuthService({ workspaceStore });
+
   async function authenticatedSession(request) {
     const session = await authService.session(request);
     if (!session.data.authenticated) throw new AuthError("Sign in to access this workspace", 401);
@@ -117,7 +131,7 @@ export function createRequestHandler({
           workspace: { name: "Demo workspace", role: "demo" },
           insights: buildInsights(demoFans),
           fans,
-          connections: getConnectionCatalog(),
+          connections: getConnectionCatalog({}, oauthService.catalog()),
         },
         meta: { demo: true, authenticated: false, count: fans.length },
         cookies: [],
@@ -135,7 +149,7 @@ export function createRequestHandler({
         workspace: state.workspace,
         insights: buildInsights(state.fans, state.snapshot),
         fans,
-        connections: getConnectionCatalog(state.connectionStatuses),
+        connections: getConnectionCatalog(state.connectionStatuses, oauthService.catalog(state.connectionStatuses)),
       },
       meta: { demo: false, authenticated: true, count: fans.length },
       cookies: session.cookies,
@@ -231,6 +245,57 @@ export function createRequestHandler({
         return sendJson(response, 200, { data: dashboard.data.connections, meta: dashboard.meta }, cookieHeaders(dashboard.cookies));
       } catch (error) {
         return sendError(response, error);
+      }
+    }
+
+    const oauthRoute = pathname.match(/^\/api\/v1\/oauth\/([a-z_]+)\/(start|callback|sync|disconnect)$/);
+    if (oauthRoute) {
+      const [, provider, action] = oauthRoute;
+      if (request.method === "GET" && action === "start") {
+        try {
+          const session = await authenticatedSession(request);
+          const result = await oauthService.begin(provider, session.data);
+          return sendRedirect(response, result.redirectUrl, [...session.cookies, ...result.cookies]);
+        } catch (error) {
+          return sendError(response, error);
+        }
+      }
+
+      if (request.method === "GET" && action === "callback") {
+        let session;
+        try {
+          session = await authenticatedSession(request);
+          const result = await oauthService.callback(provider, session.data, url, request);
+          const query = new URLSearchParams({ oauth: "connected", provider, account: result.account });
+          return sendRedirect(response, `/?${query}`, [...session.cookies, ...result.cookies]);
+        } catch (error) {
+          const query = new URLSearchParams({
+            oauth: "error",
+            provider,
+            message: String(error.message || "Connection failed").slice(0, 180),
+          });
+          return sendRedirect(response, `/?${query}`, session?.cookies || []);
+        }
+      }
+
+      if (request.method === "POST" && action === "sync") {
+        try {
+          const session = await authenticatedSession(request);
+          const result = await oauthService.sync(provider, session.data);
+          return sendJson(response, 200, { data: result }, cookieHeaders(session.cookies));
+        } catch (error) {
+          return sendError(response, error);
+        }
+      }
+
+      if (request.method === "DELETE" && action === "disconnect") {
+        try {
+          const session = await authenticatedSession(request);
+          const result = await oauthService.disconnect(provider, session.data);
+          return sendJson(response, 200, { data: result }, cookieHeaders(session.cookies));
+        } catch (error) {
+          return sendError(response, error);
+        }
       }
     }
 
