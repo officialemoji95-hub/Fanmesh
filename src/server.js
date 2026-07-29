@@ -79,9 +79,10 @@ async function serveStatic(pathname, response) {
     const info = await stat(filePath);
     if (!info.isFile()) return false;
     const contents = await readFile(filePath);
+    const extension = extname(filePath);
     response.writeHead(200, {
       "content-type": mimeTypes[extname(filePath)] || "application/octet-stream",
-      "cache-control": extname(filePath) === ".html" ? "no-cache" : "public, max-age=3600",
+      "cache-control": [".html", ".js", ".css"].includes(extension) ? "no-cache" : "public, max-age=3600",
       "x-content-type-options": "nosniff",
       "content-security-policy": "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'self'",
       "referrer-policy": "strict-origin-when-cross-origin",
