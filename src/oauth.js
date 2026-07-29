@@ -11,6 +11,7 @@ import { parseCookies } from "./auth.js";
 const STATE_COOKIE = "fanmesh_oauth_state";
 const STATE_TTL_MS = 10 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 15000;
+const DEFAULT_META_GRAPH_VERSION = "v25.0";
 
 export class OAuthError extends Error {
   constructor(message, statusCode = 400) {
@@ -27,8 +28,8 @@ const PROVIDERS = Object.freeze({
     clientSecretKey: "META_APP_SECRET",
     scopesKey: "META_OAUTH_SCOPES",
     scopes: ["public_profile", "pages_show_list", "pages_read_engagement", "instagram_basic", "ads_read", "leads_retrieval", "business_management"],
-    capabilities: ["Facebook Pages", "Instagram insights", "Meta ad accounts", "Lead access"],
-    caveat: "Pages, Instagram professional accounts, ads and leads appear only when Meta grants the matching scopes.",
+    capabilities: ["Facebook Pages", "Instagram professional media", "Meta ad insights", "Lead-form inventory"],
+    caveat: "Pages, Instagram professional accounts, ads and lead forms appear only when Meta grants the matching scopes and asset roles.",
   },
   tiktok: {
     label: "TikTok",
@@ -178,8 +179,15 @@ function providerConfiguration(provider, environment, vault) {
     baseUrl,
     callbackUrl: baseUrl ? `${baseUrl}/api/v1/oauth/${provider}/callback` : "",
     scopes: scopesFor(definition, environment),
+    graphVersion: provider === "meta" && /^v\d+\.\d+$/.test(text(environment.META_GRAPH_VERSION, 20))
+      ? text(environment.META_GRAPH_VERSION, 20)
+      : DEFAULT_META_GRAPH_VERSION,
     configured: Boolean(baseUrl && vault.configured && credentialsReady),
   };
+}
+
+function metaGraphBase(config) {
+  return `https://graph.facebook.com/${config.graphVersion}`;
 }
 
 function stateCookie(value, environment, maxAge = 600) {
@@ -204,7 +212,7 @@ function base64UrlSha256(value) {
 function authorizeUrl(config, state, verifier) {
   let url;
   if (config.provider === "meta") {
-    url = new URL("https://www.facebook.com/dialog/oauth");
+    url = new URL(`https://www.facebook.com/${config.graphVersion}/dialog/oauth`);
     url.search = new URLSearchParams({
       client_id: config.clientId,
       redirect_uri: config.callbackUrl,
@@ -302,7 +310,7 @@ function normalizedToken(payload, previousRefreshToken = null) {
 async function exchangeCode(config, code, verifier, fetchImpl) {
   let payload;
   if (config.provider === "meta") {
-    const tokenUrl = new URL("https://graph.facebook.com/oauth/access_token");
+    const tokenUrl = new URL(`${metaGraphBase(config)}/oauth/access_token`);
     tokenUrl.search = new URLSearchParams({
       client_id: config.clientId,
       client_secret: config.clientSecret,
@@ -311,7 +319,7 @@ async function exchangeCode(config, code, verifier, fetchImpl) {
     });
     payload = await platformRequest(fetchImpl, tokenUrl);
     try {
-      const extendedUrl = new URL("https://graph.facebook.com/oauth/access_token");
+      const extendedUrl = new URL(`${metaGraphBase(config)}/oauth/access_token`);
       extendedUrl.search = new URLSearchParams({
         grant_type: "fb_exchange_token",
         client_id: config.clientId,
@@ -406,65 +414,218 @@ function accessTokenUrl(base, token, parameters = {}) {
   return url;
 }
 
-async function syncMeta(token, fetchImpl) {
-  const profile = await platformRequest(fetchImpl, accessTokenUrl("https://graph.facebook.com/me", token.accessToken, { fields: "id,name" }));
-  const [pagePayload, adPayload] = await Promise.all([
-    platformRequest(fetchImpl, accessTokenUrl("https://graph.facebook.com/me/accounts", token.accessToken, {
-      fields: "id,name,fan_count,followers_count,tasks,instagram_business_account",
-      limit: "100",
-    })).catch(() => ({ data: [] })),
-    platformRequest(fetchImpl, accessTokenUrl("https://graph.facebook.com/me/adaccounts", token.accessToken, {
-      fields: "id,name,account_status,currency,timezone_name",
-      limit: "100",
-    })).catch(() => ({ data: [] })),
+function metaIssueMessage(area) {
+  const messages = {
+    permissions: "Meta did not return the permission inventory; reconnect before relying on the asset summary.",
+    pages: "Grant Page list/read access and confirm the Facebook account has a role on the Page.",
+    instagram: "Link an Instagram professional account to an authorized Page and grant Instagram basic access.",
+    ads: "Grant ads_read and confirm the authorized person can access the ad account.",
+    lead_forms: "Grant leads_retrieval and Page lead access before FanMesh can inventory Instant Forms.",
+  };
+  return messages[area] || "Meta did not grant access to this asset.";
+}
+
+function metaLeadActions(actions) {
+  const leadTypes = new Set([
+    "lead",
+    "onsite_conversion.lead_grouped",
+    "offsite_conversion.fb_pixel_lead",
   ]);
-  const pages = [];
-  const instagramAccounts = [];
-  const pageTokens = {};
-  for (const page of pagePayload.data || []) {
-    pages.push({
-      id: page.id,
-      name: page.name,
-      followers: Number(page.followers_count || page.fan_count) || 0,
-      tasks: Array.isArray(page.tasks) ? page.tasks : [],
-    });
-    if (page.access_token) pageTokens[page.id] = page.access_token;
-    if (page.instagram_business_account?.id) {
-      try {
-        const instagram = await platformRequest(fetchImpl, accessTokenUrl(
-          `https://graph.facebook.com/${page.instagram_business_account.id}`,
-          page.access_token || token.accessToken,
-          { fields: "id,username,name,profile_picture_url,followers_count,follows_count,media_count" },
-        ));
-        instagramAccounts.push({
-          id: instagram.id,
-          username: instagram.username,
-          name: instagram.name,
-          profilePictureUrl: instagram.profile_picture_url,
-          followers: Number(instagram.followers_count) || 0,
-          follows: Number(instagram.follows_count) || 0,
-          mediaCount: Number(instagram.media_count) || 0,
-          pageId: page.id,
-        });
-      } catch {
-        instagramAccounts.push({ id: page.instagram_business_account.id, pageId: page.id, access: "scope_required" });
+  return (Array.isArray(actions) ? actions : []).reduce((sum, action) => (
+    leadTypes.has(action?.action_type) ? sum + nonNegativeNumber(action.value) : sum
+  ), 0);
+}
+
+function normalizedMetaMedia(media) {
+  const likes = Math.round(nonNegativeNumber(media.like_count));
+  const comments = Math.round(nonNegativeNumber(media.comments_count));
+  return {
+    id: text(media.id, 80),
+    caption: text(media.caption, 180),
+    mediaType: text(media.media_type, 30).toLowerCase(),
+    productType: text(media.media_product_type, 30).toLowerCase(),
+    permalink: safeHttpsUrl(media.permalink, "instagram.com"),
+    createdAt: Number.isFinite(Date.parse(media.timestamp || "")) ? new Date(media.timestamp).toISOString() : null,
+    likes,
+    comments,
+    interactions: likes + comments,
+  };
+}
+
+async function syncMeta(config, token, fetchImpl) {
+  const base = metaGraphBase(config);
+  const issues = [];
+  const issueAreas = new Set();
+  async function optional(area, request, fallback) {
+    try {
+      return await request();
+    } catch {
+      if (!issueAreas.has(area)) {
+        issueAreas.add(area);
+        issues.push({ area, message: metaIssueMessage(area) });
       }
+      return fallback;
     }
   }
-  const adAccounts = (adPayload.data || []).map((account) => ({
-    id: account.id,
-    name: account.name,
-    status: account.account_status,
-    currency: account.currency,
-    timezone: account.timezone_name,
+
+  const profile = await platformRequest(fetchImpl, accessTokenUrl(`${base}/me`, token.accessToken, { fields: "id,name" }));
+  const [permissionPayload, pagePayload, adPayload] = await Promise.all([
+    optional("permissions", () => platformRequest(fetchImpl, accessTokenUrl(`${base}/me/permissions`, token.accessToken, { limit: "100" })), { data: [] }),
+    optional("pages", () => platformRequest(fetchImpl, accessTokenUrl(`${base}/me/accounts`, token.accessToken, {
+      fields: "id,name,access_token,fan_count,followers_count,tasks,instagram_business_account",
+      limit: "100",
+    })), { data: [] }),
+    optional("ads", () => platformRequest(fetchImpl, accessTokenUrl(`${base}/me/adaccounts`, token.accessToken, {
+      fields: "id,name,account_status,currency,timezone_name",
+      limit: "100",
+    })), { data: [] }),
+  ]);
+  const grantedScopes = (Array.isArray(permissionPayload.data) ? permissionPayload.data : [])
+    .filter((permission) => permission?.status === "granted")
+    .map((permission) => text(permission.permission, 100))
+    .filter(Boolean);
+
+  const pageTokens = {};
+  const pages = (Array.isArray(pagePayload.data) ? pagePayload.data : []).map((page) => {
+    if (page.access_token) pageTokens[page.id] = page.access_token;
+    return {
+      id: text(page.id, 80),
+      name: text(page.name, 120),
+      followers: Math.round(nonNegativeNumber(page.followers_count || page.fan_count)),
+      tasks: Array.isArray(page.tasks) ? page.tasks.map((task) => text(task, 40)).filter(Boolean) : [],
+      instagramId: text(page.instagram_business_account?.id, 80) || null,
+    };
+  });
+
+  const instagramAccounts = (await Promise.all(pages.filter((page) => page.instagramId).map(async (page) => {
+    const assetToken = pageTokens[page.id] || token.accessToken;
+    const instagram = await optional("instagram", () => platformRequest(fetchImpl, accessTokenUrl(
+      `${base}/${page.instagramId}`,
+      assetToken,
+      { fields: "id,username,name,profile_picture_url,followers_count,follows_count,media_count" },
+    )), null);
+    if (!instagram) return { id: page.instagramId, pageId: page.id, access: "scope_required", recentMedia: [] };
+    const mediaPayload = await optional("instagram", () => platformRequest(fetchImpl, accessTokenUrl(
+      `${base}/${page.instagramId}/media`,
+      assetToken,
+      {
+        fields: "id,caption,media_type,media_product_type,permalink,timestamp,like_count,comments_count",
+        limit: "20",
+      },
+    )), { data: [] });
+    const recentMedia = (Array.isArray(mediaPayload.data) ? mediaPayload.data : [])
+      .slice(0, 20)
+      .map(normalizedMetaMedia)
+      .filter((media) => media.id);
+    return {
+      id: text(instagram.id, 80),
+      username: text(instagram.username, 120),
+      name: text(instagram.name, 120),
+      profilePictureUrl: safeHttpsUrl(instagram.profile_picture_url, "cdninstagram.com")
+        || safeHttpsUrl(instagram.profile_picture_url, "fbcdn.net"),
+      followers: Math.round(nonNegativeNumber(instagram.followers_count)),
+      follows: Math.round(nonNegativeNumber(instagram.follows_count)),
+      mediaCount: Math.round(nonNegativeNumber(instagram.media_count)),
+      pageId: page.id,
+      recentMedia,
+    };
+  }))).filter(Boolean);
+
+  const leadFormsByPage = await Promise.all(pages.map(async (page) => {
+    const assetToken = pageTokens[page.id];
+    if (!assetToken) return [];
+    const formPayload = await optional("lead_forms", () => platformRequest(fetchImpl, accessTokenUrl(
+      `${base}/${page.id}/leadgen_forms`,
+      assetToken,
+      { fields: "id,name,status,created_time", limit: "25" },
+    )), { data: [] });
+    return Promise.all((Array.isArray(formPayload.data) ? formPayload.data : []).slice(0, 25).map(async (form) => {
+      const leadPayload = await optional("lead_forms", () => platformRequest(fetchImpl, accessTokenUrl(
+        `${base}/${form.id}/leads`,
+        assetToken,
+        { fields: "id,created_time", limit: "1", summary: "true" },
+      )), null);
+      return {
+        id: text(form.id, 80),
+        pageId: page.id,
+        name: text(form.name, 120) || "Untitled Instant Form",
+        status: text(form.status, 40).toLowerCase(),
+        createdAt: Number.isFinite(Date.parse(form.created_time || "")) ? new Date(form.created_time).toISOString() : null,
+        leadCount: leadPayload && Number.isFinite(Number(leadPayload.summary?.total_count))
+          ? Math.max(0, Number(leadPayload.summary.total_count))
+          : null,
+        latestLeadAt: leadPayload?.data?.[0]?.created_time || null,
+      };
+    }));
   }));
+  const leadForms = leadFormsByPage.flat();
+
+  const adAccounts = await Promise.all((Array.isArray(adPayload.data) ? adPayload.data : []).map(async (account) => {
+    const insightPayload = await optional("ads", () => platformRequest(fetchImpl, accessTokenUrl(
+      `${base}/${account.id}/insights`,
+      token.accessToken,
+      { fields: "spend,impressions,reach,clicks,actions", date_preset: "last_30d", level: "account", limit: "1" },
+    )), { data: [] });
+    const insight = insightPayload.data?.[0] || {};
+    return {
+      id: text(account.id, 80),
+      name: text(account.name, 120),
+      status: Number(account.account_status) || 0,
+      currency: text(account.currency, 10),
+      timezone: text(account.timezone_name, 80),
+      insights30d: {
+        spend: nonNegativeNumber(insight.spend),
+        impressions: Math.round(nonNegativeNumber(insight.impressions)),
+        reach: Math.round(nonNegativeNumber(insight.reach)),
+        clicks: Math.round(nonNegativeNumber(insight.clicks)),
+        leads: Math.round(metaLeadActions(insight.actions)),
+      },
+    };
+  }));
+
+  const currencies = [...new Set(adAccounts.map((account) => account.currency).filter(Boolean))];
+  const adSummary30d = {
+    period: "last_30d",
+    currency: currencies.length === 1 ? currencies[0] : currencies.length ? "mixed" : null,
+    spend: currencies.length <= 1 ? adAccounts.reduce((sum, account) => sum + account.insights30d.spend, 0) : null,
+    impressions: adAccounts.reduce((sum, account) => sum + account.insights30d.impressions, 0),
+    reach: adAccounts.reduce((sum, account) => sum + account.insights30d.reach, 0),
+    clicks: adAccounts.reduce((sum, account) => sum + account.insights30d.clicks, 0),
+    leads: adAccounts.reduce((sum, account) => sum + account.insights30d.leads, 0),
+  };
+  const recentMedia = instagramAccounts.flatMap((account) => account.recentMedia || []);
   const totalFollowers = pages.reduce((sum, page) => sum + page.followers, 0)
     + instagramAccounts.reduce((sum, account) => sum + (account.followers || 0), 0);
+  const knownLeadCount = leadForms.reduce((sum, form) => sum + (Number(form.leadCount) || 0), 0);
   return {
     externalAccountId: profile.id,
-    publicData: { profile: { id: profile.id, name: profile.name }, pages, instagramAccounts, adAccounts },
+    publicData: {
+      profile: { id: text(profile.id, 80), name: text(profile.name, 120) },
+      pages,
+      instagramAccounts,
+      adAccounts,
+      leadForms,
+      adSummary30d,
+      grantedPermissions: grantedScopes,
+      syncIssues: issues,
+    },
     privateData: { pageTokens },
-    metrics: { totalFollowers, averageViews: 0, pages: pages.length, adAccounts: adAccounts.length },
+    grantedScopes,
+    metrics: {
+      totalFollowers,
+      averageViews: 0,
+      pages: pages.length,
+      instagramAccounts: instagramAccounts.length,
+      adAccounts: adAccounts.length,
+      leadForms: leadForms.length,
+      knownLeads: knownLeadCount,
+      recentMediaCount: recentMedia.length,
+      recentMediaInteractions: recentMedia.reduce((sum, media) => sum + media.interactions, 0),
+      adImpressions30d: adSummary30d.impressions,
+      adReach30d: adSummary30d.reach,
+      adClicks30d: adSummary30d.clicks,
+      adLeads30d: adSummary30d.leads,
+    },
   };
 }
 
@@ -639,7 +800,7 @@ async function syncThreads(token, fetchImpl) {
 }
 
 async function synchronize(config, token, fetchImpl) {
-  if (config.provider === "meta") return syncMeta(token, fetchImpl);
+  if (config.provider === "meta") return syncMeta(config, token, fetchImpl);
   if (config.provider === "tiktok") return syncTikTok(token, fetchImpl);
   if (config.provider === "snapchat") return syncSnapchat(token, fetchImpl);
   if (config.provider === "x") return syncX(token, fetchImpl);
@@ -737,12 +898,17 @@ export function createOAuthService({
     const stateRecord = readState(provider, session, request, returnedState);
     const token = await exchangeCode(providerConfig, code, stateRecord.verifier, fetchImpl);
     const syncResult = await synchronize(providerConfig, token, fetchImpl);
-    const credentials = vault.seal({ ...token, providerAssets: syncResult.privateData });
+    const storedToken = Array.isArray(syncResult.grantedScopes)
+      ? { ...token, grantedScopes: syncResult.grantedScopes }
+      : token;
+    const credentials = vault.seal({ ...storedToken, providerAssets: syncResult.privateData });
     const saved = await workspaceStore.saveSourceConnection(session.user, session.accessToken, {
       platform: provider,
       status: "connected",
       externalAccountId: syncResult.externalAccountId,
-      scopes: token.grantedScopes.length ? token.grantedScopes : providerConfig.scopes,
+      scopes: Array.isArray(syncResult.grantedScopes)
+        ? syncResult.grantedScopes
+        : token.grantedScopes.length ? token.grantedScopes : providerConfig.scopes,
       metadata: {
         public: syncResult.publicData,
         metrics: syncResult.metrics,
@@ -767,16 +933,19 @@ export function createOAuthService({
     let token = vault.open(connection.metadata.credentials);
     if (Date.parse(token.expiresAt || "") <= now()) token = await refreshAccessToken(providerConfig, token, fetchImpl);
     const syncResult = await synchronize(providerConfig, token, fetchImpl);
+    const storedToken = Array.isArray(syncResult.grantedScopes)
+      ? { ...token, grantedScopes: syncResult.grantedScopes }
+      : token;
     const saved = await workspaceStore.saveSourceConnection(session.user, session.accessToken, {
       platform: provider,
       status: "connected",
       externalAccountId: syncResult.externalAccountId,
-      scopes: connection.scopes || providerConfig.scopes,
+      scopes: Array.isArray(syncResult.grantedScopes) ? syncResult.grantedScopes : connection.scopes || providerConfig.scopes,
       metadata: {
         ...connection.metadata,
         public: syncResult.publicData,
         metrics: syncResult.metrics,
-        credentials: vault.seal({ ...token, providerAssets: syncResult.privateData }),
+        credentials: vault.seal({ ...storedToken, providerAssets: syncResult.privateData }),
         syncedAt: new Date(now()).toISOString(),
       },
     });
