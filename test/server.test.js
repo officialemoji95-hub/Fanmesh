@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { handleRequest } from "../src/server.js";
+import { createRequestHandler, handleRequest } from "../src/server.js";
 
-async function dispatch({ method = "GET", url = "/", body = "" } = {}) {
+async function dispatch({ method = "GET", url = "/", body = "", handler = handleRequest } = {}) {
   const request = {
     method,
     url,
@@ -26,14 +26,91 @@ async function dispatch({ method = "GET", url = "/", body = "" } = {}) {
       return JSON.parse(Buffer.concat(this.chunks).toString("utf8"));
     },
   };
-  await handleRequest(request, response);
+  await handler(request, response);
   return response;
 }
 
 test("health endpoint reports an operational service", async () => {
   const response = await dispatch({ url: "/api/health" });
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.1.0" });
+  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.2.0", database: "demo" });
+});
+
+test("auth session clearly reports unconfigured demo mode", async () => {
+  const response = await dispatch({ url: "/api/v1/auth/session" });
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.json().data, { configured: false, authenticated: false, mode: "demo" });
+});
+
+test("consolidated dashboard labels demo records", async () => {
+  const response = await dispatch({ url: "/api/v1/dashboard?limit=2" });
+  const body = response.json();
+  assert.equal(response.statusCode, 200);
+  assert.equal(body.meta.demo, true);
+  assert.equal(body.data.fans.length, 2);
+  assert.equal(body.data.workspace.role, "demo");
+});
+
+test("account creation refuses to pretend Supabase is configured", async () => {
+  const response = await dispatch({
+    method: "POST",
+    url: "/api/v1/auth/signup",
+    body: JSON.stringify({ displayName: "Creator", email: "creator@example.com", password: "strong-pass" }),
+  });
+  assert.equal(response.statusCode, 503);
+  assert.match(response.json().error.message, /not configured/);
+});
+
+test("configured workspaces require an authenticated session", async () => {
+  const handler = createRequestHandler({
+    authService: {
+      config: { configured: true },
+      async session() {
+        return { data: { configured: true, authenticated: false, mode: "supabase" }, cookies: [] };
+      },
+    },
+    workspaceStore: {},
+  });
+  const response = await dispatch({ url: "/api/v1/dashboard", handler });
+  assert.equal(response.statusCode, 401);
+  assert.match(response.json().error.message, /Sign in/);
+});
+
+test("authenticated dashboards return private workspace data instead of demo totals", async () => {
+  const handler = createRequestHandler({
+    authService: {
+      config: { configured: true },
+      async session() {
+        return {
+          data: {
+            configured: true,
+            authenticated: true,
+            mode: "supabase",
+            accessToken: "server-only-token",
+            user: { id: "user-1", email: "creator@example.com", displayName: "Creator" },
+          },
+          cookies: [],
+        };
+      },
+    },
+    workspaceStore: {
+      async getDashboard() {
+        return {
+          workspace: { id: "workspace-1", name: "Creator workspace", role: "owner" },
+          fans: [],
+          snapshot: { totalFollowers: 0, averageViews: 0, identifiedFans: 0, directConnections: 0, connectedPlatforms: 0 },
+          connectionStatuses: {},
+        };
+      },
+    },
+  });
+  const response = await dispatch({ url: "/api/v1/dashboard", handler });
+  const body = response.json();
+  assert.equal(response.statusCode, 200);
+  assert.equal(body.meta.demo, false);
+  assert.equal(body.data.insights.snapshot.totalFollowers, 0);
+  assert.equal(body.data.fans.length, 0);
+  assert.equal(JSON.stringify(body).includes("server-only-token"), false);
 });
 
 test("fan endpoint returns scored records", async () => {
