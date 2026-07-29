@@ -16,6 +16,10 @@ Returns scored fan records. The maximum limit is 100.
 
 Returns the audience snapshot, tier distribution, reach-health ratios, and recommended actions.
 
+### `GET /api/v1/connections`
+
+Returns the social-account and lead-source capability catalog. Prototype responses contain no access tokens and report every source as unconnected or ready for an authorized import.
+
 ### `POST /api/v1/score`
 
 Accepts these numeric metrics plus a boolean direct opt-in:
@@ -35,6 +39,14 @@ The response includes the total score, tier, component points, strongest signals
 ### `POST /api/v1/campaigns/recommend`
 
 Accepts an `objective` (`release`, `sales`, or `community`) and a `contentType`. Returns a segment, timed channel sequence, and compliance guardrail.
+
+### `POST /api/v1/imports/leads/preview`
+
+Accepts `{ "rows": [...] }` and validates up to 1,000 first-party lead records without persisting them. A valid row needs an email or phone, `consent: true`, a parseable `consentAt`, and a `consentSource`. The response includes normalized records, hashed contact keys, invalid-row reasons, and source counts. Purchased, scraped, or unconsented lists are not accepted.
+
+### `POST /api/v1/experiments/social`
+
+Accepts a `contentId`, optional `objective`, `platforms`, `channels`, `candidateCounts`, and `holdoutPercent`. Returns a draft sequence for native publishing, consented direct channels, and authorized ad audiences, plus an explicit holdout and guardrails. It does not publish, message, or alter platform ranking by itself.
 
 ### `GET /api/v1/openapi.json`
 
