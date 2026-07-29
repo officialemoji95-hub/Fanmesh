@@ -2,6 +2,9 @@ const numberFormatter = new Intl.NumberFormat("en-US");
 const toast = document.querySelector(".toast");
 let toastTimer;
 let fanRecords = [];
+let audienceState = { totalFollowers: 0, identifiedFans: 0, directConnections: 0 };
+let authState = { configured: false, authenticated: false, mode: "demo" };
+let authMode = "signin";
 
 function showToast(message) {
   clearTimeout(toastTimer);
@@ -28,7 +31,7 @@ function channelMarkup(channels) {
 function renderFans(records) {
   const table = document.querySelector("#fan-table");
   if (!records.length) {
-    table.innerHTML = '<tr><td colspan="6" class="loading">No fans match that search.</td></tr>';
+    table.innerHTML = `<tr><td colspan="6" class="loading">${authState.configured ? "No fan records yet. Your first consented import will appear here." : "No fans match that search."}</td></tr>`;
     return;
   }
 
@@ -87,32 +90,120 @@ function renderSocialPlan(plan) {
     <div class="guardrail"><strong>Guardrails:</strong> ${escapeHtml(plan.guardrails[0])}</div>`;
 }
 
+function formatCompact(value) {
+  return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value || 0);
+}
+
+function percent(value) {
+  return `${Number(value || 0).toFixed(2)}%`;
+}
+
+function updateDashboardChrome(snapshot, workspace, meta) {
+  audienceState = snapshot;
+  const identifiedRate = snapshot.totalFollowers ? (snapshot.identifiedFans / snapshot.totalFollowers) * 100 : 0;
+  const directRate = snapshot.identifiedFans ? (snapshot.directConnections / snapshot.identifiedFans) * 100 : 0;
+  const display = {
+    followers: numberFormatter.format(snapshot.totalFollowers),
+    identified: numberFormatter.format(snapshot.identifiedFans),
+    direct: numberFormatter.format(snapshot.directConnections),
+  };
+
+  document.querySelector("#total-followers").textContent = display.followers;
+  document.querySelector("#identified-fans").textContent = display.identified;
+  document.querySelector("#direct-connections").textContent = display.direct;
+  document.querySelector("#view-rate").textContent = percent(snapshot.viewRate);
+  document.querySelector("#connected-platforms").textContent = `${numberFormatter.format(snapshot.connectedPlatforms)} platforms`;
+  document.querySelector("#identity-rate").textContent = percent(identifiedRate);
+  document.querySelector("#direct-rate").textContent = percent(directRate);
+  document.querySelector("#average-views").textContent = numberFormatter.format(snapshot.averageViews);
+  document.querySelector("#reach-followers").textContent = display.followers;
+  document.querySelector("#reach-identified").textContent = display.identified;
+  document.querySelector("#reach-direct").textContent = display.direct;
+  document.querySelector("#orbit-fans").textContent = formatCompact(snapshot.identifiedFans);
+  document.querySelector("#audience-count").textContent = formatCompact(snapshot.identifiedFans);
+  document.querySelector("#capture-count").textContent = `${display.identified} identities`;
+  document.querySelector("#capture-note").textContent = meta.demo ? "sample records in demo mode" : "in your private workspace";
+  document.querySelector("#capture-state").textContent = meta.demo ? "Demo audience" : "Audience database is live";
+  document.querySelector("#audience-mode").textContent = meta.demo ? "Showing clearly labeled demo records" : `Showing ${fanRecords.length} workspace records`;
+
+  const identifiedWidth = snapshot.totalFollowers ? Math.max(0, Math.min(100, identifiedRate)) : 0;
+  const directWidth = snapshot.totalFollowers ? Math.max(0, Math.min(100, (snapshot.directConnections / snapshot.totalFollowers) * 100)) : 0;
+  document.querySelector(".bar.identified").style.width = `${identifiedWidth}%`;
+  document.querySelector(".bar.reachable").style.width = `${directWidth}%`;
+
+  const modePill = document.querySelector("#data-mode-pill");
+  modePill.classList.toggle("live", !meta.demo);
+  modePill.innerHTML = `<i></i> ${meta.demo ? "Demo data" : "Live workspace"}`;
+  document.querySelector("#setup-banner").hidden = !meta.demo;
+
+  const name = authState.user?.displayName || (meta.demo ? "Demo Creator" : "Creator");
+  document.querySelector("#profile-name").textContent = name;
+  document.querySelector("#profile-workspace").textContent = workspace?.name || "Creator workspace";
+  document.querySelector("#profile-avatar").textContent = name.slice(0, 1).toUpperCase();
+  document.querySelector("#signout-button").hidden = !authState.authenticated;
+}
+
 async function loadDashboard() {
   try {
-    const [insightsResponse, fansResponse, connectionsResponse] = await Promise.all([
-      fetch("/api/v1/insights"),
-      fetch("/api/v1/fans?limit=20"),
-      fetch("/api/v1/connections"),
-    ]);
-    if (!insightsResponse.ok || !fansResponse.ok || !connectionsResponse.ok) throw new Error("Dashboard API unavailable");
-    const [{ data: insights }, { data: fans }, { data: connections }] = await Promise.all([
-      insightsResponse.json(),
-      fansResponse.json(),
-      connectionsResponse.json(),
-    ]);
-
+    const response = await fetch("/api/v1/dashboard?limit=20");
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error?.message || "Dashboard API unavailable");
+    const { insights, fans, connections, workspace } = body.data;
+    const meta = body.meta;
     const { snapshot } = insights;
-    document.querySelector("#total-followers").textContent = numberFormatter.format(snapshot.totalFollowers);
-    document.querySelector("#identified-fans").textContent = numberFormatter.format(snapshot.identifiedFans);
-    document.querySelector("#direct-connections").textContent = numberFormatter.format(snapshot.directConnections);
-    document.querySelector("#view-rate").textContent = `${snapshot.viewRate}%`;
+    fanRecords = fans;
+    updateDashboardChrome(snapshot, workspace, meta);
     renderRecommendations(insights.recommendations);
     renderConnections(connections);
-    fanRecords = fans;
+    document.querySelector("#cross-platform-count").textContent = numberFormatter.format(
+      fanRecords.filter((fan) => fan.channels.length > 1).length,
+    );
     renderFans(fanRecords);
   } catch (error) {
     document.querySelector("#recommendations").innerHTML = `<p class="loading">${escapeHtml(error.message)}</p>`;
     document.querySelector("#fan-table").innerHTML = `<tr><td colspan="6" class="loading">${escapeHtml(error.message)}</td></tr>`;
+  }
+}
+
+function showAuthGate(show) {
+  document.querySelector("#auth-gate").hidden = !show;
+  document.body.classList.toggle("auth-open", show);
+}
+
+function setAuthMode(mode) {
+  authMode = mode;
+  const signUp = mode === "signup";
+  const form = document.querySelector("#auth-form");
+  form.dataset.mode = mode;
+  document.querySelector("#display-name-field").hidden = !signUp;
+  form.elements.displayName.required = signUp;
+  form.elements.password.autocomplete = signUp ? "new-password" : "current-password";
+  document.querySelector("#auth-title").textContent = signUp ? "Create your creator workspace." : "Sign in to your audience.";
+  document.querySelector("#auth-copy").textContent = signUp
+    ? "Your private workspace is created automatically after registration."
+    : "Your workspace and fan data stay private to your account.";
+  form.querySelector("button[type=submit]").textContent = signUp ? "Create account ↗" : "Sign in ↗";
+  document.querySelector("#auth-toggle").textContent = signUp
+    ? "Already have an account? Sign in"
+    : "New to FanMesh? Create an account";
+  document.querySelector("#auth-message").textContent = "";
+}
+
+async function bootstrapAccount() {
+  try {
+    const response = await fetch("/api/v1/auth/session");
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error?.message || "Could not check your account");
+    authState = body.data;
+    if (authState.configured && !authState.authenticated) {
+      showAuthGate(true);
+      return;
+    }
+    showAuthGate(false);
+    await loadDashboard();
+  } catch (error) {
+    showAuthGate(true);
+    document.querySelector("#auth-message").textContent = error.message;
   }
 }
 
@@ -128,7 +219,7 @@ document.addEventListener("click", (event) => {
   const rowAction = event.target.closest("[data-fan]");
   if (rowAction) {
     const fan = fanRecords.find((item) => item.id === rowAction.dataset.fan);
-    showToast(`${fan.displayName}: score ${fan.fanScore.score}, led by ${fan.fanScore.strongestSignals[0].signal}.`);
+    if (fan) showToast(`${fan.displayName}: score ${fan.fanScore.score}, led by ${fan.fanScore.strongestSignals[0]?.signal || "recent activity"}.`);
   }
 
   if (event.target.closest(".mobile-menu")) document.querySelector(".sidebar").classList.toggle("open");
@@ -182,7 +273,11 @@ document.querySelector("#social-experiment-form").addEventListener("submit", asy
     objective: formData.get("objective"),
     platforms: formData.getAll("platforms"),
     channels: formData.getAll("channels"),
-    candidateCounts: { followers: 118000, adLeads: 0, optedInFans: 1926 },
+    candidateCounts: {
+      followers: audienceState.totalFollowers,
+      adLeads: 0,
+      optedInFans: audienceState.directConnections,
+    },
   };
   submitButton.disabled = true;
   submitButton.textContent = "Building plan…";
@@ -203,4 +298,52 @@ document.querySelector("#social-experiment-form").addEventListener("submit", asy
   }
 });
 
-loadDashboard();
+document.querySelector("#auth-toggle").addEventListener("click", () => {
+  setAuthMode(authMode === "signin" ? "signup" : "signin");
+});
+
+document.querySelector("#auth-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector("button[type=submit]");
+  const message = document.querySelector("#auth-message");
+  const input = Object.fromEntries(new FormData(form));
+  button.disabled = true;
+  button.textContent = authMode === "signup" ? "Creating workspace…" : "Signing in…";
+  message.className = "auth-message";
+  message.textContent = "";
+  try {
+    const response = await fetch(`/api/v1/auth/${authMode}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error?.message || "Account request failed");
+    if (body.data.verificationRequired) {
+      setAuthMode("signin");
+      form.elements.password.value = "";
+      message.classList.add("success");
+      message.textContent = "Check your email to confirm the account, then sign in.";
+      return;
+    }
+    authState = body.data;
+    form.reset();
+    showAuthGate(false);
+    await loadDashboard();
+  } catch (error) {
+    message.textContent = error.message;
+  } finally {
+    button.disabled = false;
+    button.textContent = authMode === "signup" ? "Create account ↗" : "Sign in ↗";
+  }
+});
+
+document.querySelector("#signout-button").addEventListener("click", async () => {
+  await fetch("/api/v1/auth/signout", { method: "POST" });
+  authState = { configured: true, authenticated: false, mode: "supabase" };
+  setAuthMode("signin");
+  showAuthGate(true);
+});
+
+bootstrapAccount();
