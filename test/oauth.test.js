@@ -79,6 +79,7 @@ test("TikTok callback verifies state, encrypts tokens, and stores a safe account
   const session = { user: { id: "user-1" }, accessToken: "supabase-token" };
   const started = await service.begin("tiktok", session);
   const authorization = new URL(started.redirectUrl);
+  assert.equal(authorization.searchParams.get("disable_auto_auth"), "1");
   const state = authorization.searchParams.get("state");
   const callbackUrl = new URL(`https://fanmesh.example/api/v1/oauth/tiktok/callback?code=code-1&state=${encodeURIComponent(state)}`);
   const result = await service.callback("tiktok", session, callbackUrl, {
