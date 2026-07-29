@@ -10,10 +10,10 @@ import { openApiDocument } from "./openapi.js";
 import { getConnectionCatalog, planSocialExperiment, previewLeadImport } from "./social.js";
 import { scoreAudience, scoreFan } from "./scoring.js";
 
-const APP_VERSION = "0.2.0";
+const APP_VERSION = "0.3.0";
 const port = Number(process.env.PORT || 3000);
 const publicDirectory = fileURLToPath(new URL("../public", import.meta.url));
-const maxBodyBytes = 128 * 1024;
+const maxBodyBytes = 2 * 1024 * 1024;
 
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
@@ -254,6 +254,35 @@ export function createRequestHandler({
         let cookies = [];
         if (authService.config.configured) cookies = (await authenticatedSession(request)).cookies;
         return sendJson(response, 200, { data: previewLeadImport(await readJson(request)), meta: { persisted: false } }, cookieHeaders(cookies));
+      } catch (error) {
+        return sendError(response, error);
+      }
+    }
+
+    if (request.method === "POST" && pathname === "/api/v1/imports/leads/commit") {
+      try {
+        if (!authService.config.configured) {
+          throw new DatabaseError("Configure Supabase before committing audience records", 503);
+        }
+        const session = await authenticatedSession(request);
+        const input = await readJson(request);
+        if (input.confirmedAuthorized !== true) {
+          const error = new Error("Confirm that this is your authorized, consented audience data");
+          error.statusCode = 400;
+          throw error;
+        }
+        const preview = previewLeadImport(input);
+        if (preview.summary.valid === 0) {
+          const error = new Error("No valid consented records are available to commit");
+          error.statusCode = 400;
+          throw error;
+        }
+        const saved = await workspaceStore.commitLeadImport(
+          session.data.user,
+          session.data.accessToken,
+          preview,
+        );
+        return sendJson(response, 201, { data: saved, meta: { demo: false, persisted: true } }, cookieHeaders(session.cookies));
       } catch (error) {
         return sendError(response, error);
       }

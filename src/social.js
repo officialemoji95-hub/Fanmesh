@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 export const SOCIAL_PLATFORMS = ["instagram", "facebook", "tiktok", "youtube", "spotify"];
-export const LEAD_SOURCES = ["meta_ads", "tiktok_ads", "google_ads", "csv"];
+export const LEAD_SOURCES = ["meta_ads", "facebook_export", "instagram_export", "tiktok_ads", "google_ads", "youtube_export", "csv"];
 
 const PLATFORM_CAPABILITIES = {
   instagram: {
@@ -38,8 +38,11 @@ const PLATFORM_CAPABILITIES = {
 
 const IMPORT_CAPABILITIES = {
   meta_ads: { label: "Meta Ads leads", authMethod: "official_export_or_api", capabilities: ["lead_import", "ad_attribution"] },
+  facebook_export: { label: "Facebook data export", authMethod: "official_export", capabilities: ["authorized_export", "identity_signal"] },
+  instagram_export: { label: "Instagram data export", authMethod: "official_export", capabilities: ["authorized_export", "identity_signal"] },
   tiktok_ads: { label: "TikTok Ads leads", authMethod: "official_export_or_api", capabilities: ["lead_import", "ad_attribution"] },
   google_ads: { label: "Google Ads leads", authMethod: "official_export_or_api", capabilities: ["lead_import", "ad_attribution"] },
+  youtube_export: { label: "YouTube data export", authMethod: "official_export", capabilities: ["authorized_export", "identity_signal"] },
   csv: { label: "Consent export (CSV)", authMethod: "file_upload", capabilities: ["lead_import"] },
 };
 
@@ -51,7 +54,7 @@ function text(value, maxLength = 160) {
 }
 
 function bool(value) {
-  return value === true || value === "true" || value === 1 || value === "1";
+  return value === true || value === 1 || value === "1" || (typeof value === "string" && value.trim().toLowerCase() === "true");
 }
 
 function finiteNumber(value, fallback = 0) {
@@ -75,6 +78,18 @@ function normalizePhone(value) {
   return /^\+?[0-9]{7,15}$/.test(normalized) ? normalized : "";
 }
 
+function normalizeSource(value) {
+  return text(value, 40).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+function consentChannels(value, { email, phone }) {
+  const supplied = Array.isArray(value) ? value : typeof value === "string" ? value.split(/[|,;]/) : [];
+  const channels = [...new Set(supplied.map((item) => text(item, 20).toLowerCase()).filter((item) => ["email", "sms"].includes(item)))];
+  if (!channels.length && email && !phone) return ["email"];
+  if (!channels.length && phone && !email) return ["sms"];
+  return channels;
+}
+
 function invalid(index, reason) {
   return { row: index + 1, reason };
 }
@@ -95,24 +110,30 @@ export function getConnectionCatalog(statuses = {}) {
   return { social, imports };
 }
 
-export function normalizeLead(row = {}, index = 0) {
+export function normalizeLead(row = {}, index = 0, defaults = {}) {
   const email = normalizeEmail(row.email);
   const phone = normalizePhone(row.phone);
-  const name = text(row.name || row.fullName, 120);
-  const source = text(row.source || row.sourcePlatform, 40).toLowerCase().replace(/\s+/g, "_");
+  const name = text(row.name || row.fullName || row.displayName, 120);
+  const location = text(row.location, 160);
+  const source = normalizeSource(row.source || row.sourcePlatform || defaults.source || "csv");
   const sourceId = text(row.sourceId || row.leadId || row.id, 160);
   const consent = bool(row.consent || row.marketingConsent || row.optedIn);
   const consentAt = text(row.consentAt || row.consent_at, 50);
   const consentSource = text(row.consentSource || row.consent_source || source, 80);
+  const channels = consentChannels(row.consentChannels || row.consentChannel || row.channels, { email, phone });
 
   if (!email && !phone) return { error: invalid(index, "a valid email or phone is required") };
   if (row.email && !email) return { error: invalid(index, "email is not valid") };
   if (row.phone && !phone) return { error: invalid(index, "phone must use 7–15 digits, optionally prefixed with +") };
+  if (!LEAD_SOURCES.includes(source)) return { error: invalid(index, `source must be one of: ${LEAD_SOURCES.join(", ")}`) };
   if (!consent) return { error: invalid(index, "explicit marketing consent is required") };
   if (!consentAt || Number.isNaN(Date.parse(consentAt))) {
     return { error: invalid(index, "consentAt must be a valid timestamp") };
   }
   if (!consentSource) return { error: invalid(index, "consentSource is required for provenance") };
+  if (!channels.length) return { error: invalid(index, "consentChannels is required when a record contains both email and phone") };
+  if (channels.includes("email") && !email) return { error: invalid(index, "email consent requires a valid email") };
+  if (channels.includes("sms") && !phone) return { error: invalid(index, "SMS consent requires a valid phone") };
 
   const contactKey = hash([email, phone].filter(Boolean).join("|"));
   return {
@@ -120,11 +141,12 @@ export function normalizeLead(row = {}, index = 0) {
       contactKey,
       sourceKey: hash(`${source || "unknown"}:${sourceId || contactKey}`),
       name,
+      location: location || undefined,
       email: email || undefined,
       phone: phone || undefined,
       source: source || "unknown",
       sourceId: sourceId || undefined,
-      consent: { granted: true, at: new Date(consentAt).toISOString(), source: consentSource },
+      consent: { granted: true, at: new Date(consentAt).toISOString(), source: consentSource, channels },
       campaignId: text(row.campaignId || row.campaign_id, 100) || undefined,
       utm: {
         source: text(row.utmSource || row.utm_source, 100) || undefined,
@@ -140,17 +162,22 @@ export function previewLeadImport(input = {}) {
   if (input.rows.length === 0) throw new TypeError("rows must contain at least one lead");
   if (input.rows.length > MAX_IMPORT_ROWS) throw new TypeError(`rows cannot exceed ${MAX_IMPORT_ROWS} records`);
 
+  const source = normalizeSource(input.source || "csv");
+  if (!LEAD_SOURCES.includes(source)) throw new TypeError(`source must be one of: ${LEAD_SOURCES.join(", ")}`);
+
   const valid = [];
   const invalidRows = [];
   const seen = new Set();
+  let duplicates = 0;
   input.rows.forEach((row, index) => {
-    const result = normalizeLead(row, index);
+    const result = normalizeLead(row, index, { source });
     if (result.error) {
       invalidRows.push(result.error);
       return;
     }
     if (seen.has(result.value.contactKey)) {
       invalidRows.push(invalid(index, "duplicate contact in this import"));
+      duplicates += 1;
       return;
     }
     seen.add(result.value.contactKey);
@@ -162,12 +189,14 @@ export function previewLeadImport(input = {}) {
     return counts;
   }, {});
   return {
+    source,
     valid,
     invalid: invalidRows,
     summary: {
       received: input.rows.length,
       valid: valid.length,
       invalid: invalidRows.length,
+      duplicates,
       withEmail: valid.filter((lead) => lead.email).length,
       withPhone: valid.filter((lead) => lead.phone).length,
       sourceCounts,
