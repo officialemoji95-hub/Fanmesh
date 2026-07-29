@@ -36,6 +36,29 @@ test("lead import preview rejects missing consent and deduplicates contacts", ()
   assert.match(preview.invalid[1].reason, /consent/);
 });
 
+test("records with both contact methods require channel-specific consent", () => {
+  const result = normalizeLead({
+    email: "fan@example.com",
+    phone: "+2348012345678",
+    source: "meta_ads",
+    consent: true,
+    consentAt: "2026-07-25T10:00:00Z",
+    consentSource: "meta-lead-form",
+  });
+  assert.match(result.error.reason, /consentChannels/);
+
+  const accepted = normalizeLead({
+    email: "fan@example.com",
+    phone: "+2348012345678",
+    source: "meta_ads",
+    consent: "TRUE",
+    consentAt: "2026-07-25T10:00:00Z",
+    consentSource: "meta-lead-form",
+    consentChannels: "email,sms",
+  });
+  assert.deepEqual(accepted.value.consent.channels, ["email", "sms"]);
+});
+
 test("social experiment plan keeps a holdout and states platform delivery limits", () => {
   const plan = planSocialExperiment({
     contentId: "single-01",
