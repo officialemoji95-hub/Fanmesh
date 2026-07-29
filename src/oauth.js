@@ -453,7 +453,17 @@ async function syncMeta(token, fetchImpl) {
 }
 
 async function syncTikTok(token, fetchImpl) {
-  const fields = "open_id,union_id,avatar_url,display_name,username,follower_count,following_count,likes_count,video_count";
+  const fields = [
+    "open_id",
+    "union_id",
+    "avatar_url",
+    "display_name",
+    ...(token.grantedScopes.includes("user.info.profile") ? ["username"] : []),
+    "follower_count",
+    "following_count",
+    "likes_count",
+    "video_count",
+  ].join(",");
   const payload = await platformRequest(fetchImpl, `https://open.tiktokapis.com/v2/user/info/?fields=${encodeURIComponent(fields)}`, {
     headers: { authorization: `Bearer ${token.accessToken}` },
   });
