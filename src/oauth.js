@@ -204,6 +204,9 @@ function authorizeUrl(config, state, verifier) {
       response_type: "code",
       scope: config.scopes.join(","),
       state,
+      // TikTok otherwise reuses a previous grant and can immediately replay a
+      // stale partial-scope decision without showing the consent screen.
+      disable_auto_auth: "1",
     });
   } else if (config.provider === "snapchat") {
     url = new URL("https://accounts.snapchat.com/login/oauth2/authorize");
