@@ -164,6 +164,26 @@ function safeTikTokShareUrl(value) {
   }
 }
 
+function safeInstagramUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    if (url.protocol !== "https:") return "";
+    if (url.hostname !== "instagram.com" && !url.hostname.endsWith(".instagram.com")) return "";
+    return url.href;
+  } catch {
+    return "";
+  }
+}
+
+function formatMoney(value, currency) {
+  if (!currency || currency === "mixed" || value === null || value === undefined) return currency === "mixed" ? "Mixed currencies" : "—";
+  try {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 2 }).format(Number(value) || 0);
+  } catch {
+    return `${currency} ${Number(value || 0).toFixed(2)}`;
+  }
+}
+
 function shortDate(value) {
   const date = new Date(value || "");
   return Number.isFinite(date.getTime())
@@ -208,6 +228,56 @@ function renderTikTokPerformance(catalog) {
     <p class="tiktok-method">Transparent window: up to the 20 most recent public posts returned by TikTok. Engagement is (likes + comments + shares) ÷ views.</p>`;
 }
 
+function renderMetaPerformance(catalog) {
+  const target = document.querySelector("#meta-performance");
+  const source = catalog.social.find((item) => item.platform === "meta");
+  if (source?.status !== "connected" || !source.account) {
+    target.hidden = true;
+    target.innerHTML = "";
+    return;
+  }
+  const account = source.account;
+  const media = (Array.isArray(account.instagramAccounts) ? account.instagramAccounts : [])
+    .flatMap((instagram) => (instagram.recentMedia || []).map((post) => ({ ...post, username: instagram.username || instagram.name })))
+    .sort((first, second) => Date.parse(second.createdAt || "") - Date.parse(first.createdAt || ""))
+    .slice(0, 5);
+  const rows = media.map((post) => {
+    const permalink = safeInstagramUrl(post.permalink);
+    const label = escapeHtml(post.caption || "Untitled Instagram post");
+    return `<article class="meta-media-row">
+      <div class="meta-media-title">${permalink ? `<a href="${escapeHtml(permalink)}" target="_blank" rel="noopener noreferrer">${label} ↗</a>` : `<strong>${label}</strong>`}<small>@${escapeHtml(post.username || "instagram")} · ${escapeHtml(shortDate(post.createdAt))}</small></div>
+      <span><b>${numberFormatter.format(post.likes || 0)}</b><small>organic likes</small></span>
+      <span><b>${numberFormatter.format(post.comments || 0)}</b><small>organic comments</small></span>
+    </article>`;
+  }).join("");
+  const issues = (Array.isArray(account.syncIssues) ? account.syncIssues : []).map((issue) =>
+    `<li><strong>${escapeHtml(issue.area.replaceAll("_", " "))}:</strong> ${escapeHtml(issue.message)}</li>`,
+  ).join("");
+  const ads = account.adSummary30d || {};
+  target.hidden = false;
+  target.innerHTML = `
+    <div class="platform-performance-heading">
+      <div><p class="eyebrow">Meta signal inventory</p><h3>Organic attention, paid delivery, and lead capture—kept separate</h3></div>
+      <span class="status ${issues ? "warning" : "good"}">${issues ? `${numberFormatter.format(account.syncIssues.length)} access item${account.syncIssues.length === 1 ? "" : "s"}` : "Authorized assets synced"}</span>
+    </div>
+    <div class="platform-performance-metrics">
+      <span><small>Facebook Pages</small><strong>${numberFormatter.format(account.pageCount || 0)}</strong></span>
+      <span><small>Instagram pros</small><strong>${numberFormatter.format(account.instagramAccountCount || 0)}</strong></span>
+      <span><small>Instant Forms</small><strong>${numberFormatter.format(account.leadFormCount || 0)}</strong></span>
+      <span><small>Known form leads</small><strong>${numberFormatter.format(account.knownLeads || 0)}</strong></span>
+    </div>
+    <div class="meta-ad-strip">
+      <span><small>Ad spend · 30d</small><strong>${escapeHtml(formatMoney(ads.spend, ads.currency))}</strong></span>
+      <span><small>Impressions · 30d</small><strong>${numberFormatter.format(ads.impressions || 0)}</strong></span>
+      <span><small>Reach · 30d</small><strong>${numberFormatter.format(ads.reach || 0)}</strong></span>
+      <span><small>Clicks · 30d</small><strong>${numberFormatter.format(ads.clicks || 0)}</strong></span>
+      <span><small>Reported leads · 30d</small><strong>${numberFormatter.format(ads.leads || 0)}</strong></span>
+    </div>
+    <div class="meta-media-list">${rows || `<p class="platform-empty">No authorized Instagram professional media was returned yet.</p>`}</div>
+    ${issues ? `<div class="meta-sync-issues"><strong>Finish Meta access</strong><ul>${issues}</ul></div>` : ""}
+    <p class="platform-method">Organic rows use basic metrics returned for your Instagram professional media and exclude ad-driven activity. Ad totals are account-level for Meta’s last-30-day preset. Form totals are inventory only—not permission to contact a lead.</p>`;
+}
+
 function renderConnections(catalog) {
   const sourceGrid = document.querySelector("#source-grid");
   const sources = catalog.social;
@@ -219,7 +289,7 @@ function renderConnections(catalog) {
       <p>${escapeHtml(source.caveat || "Import only records you are authorized to use.")}</p>
       <div class="source-tags">${source.capabilities.slice(0, 2).map((capability) => `<span>${escapeHtml(capabilityLabel(capability))}</span>`).join("")}</div>
       ${source.status === "connected" ? `
-        <div class="connection-summary"><strong>${numberFormatter.format(source.account?.followers || 0)} followers</strong><span>${source.platform === "tiktok" ? `${numberFormatter.format(source.account?.recentVideoCount || 0)} posts · ${numberFormatter.format(source.account?.averageViews || 0)} avg views` : `${numberFormatter.format(source.account?.adAccounts || 0)} ad accounts`}</span></div>
+        <div class="connection-summary"><strong>${numberFormatter.format(source.account?.followers || 0)} followers</strong><span>${source.platform === "tiktok" ? `${numberFormatter.format(source.account?.recentVideoCount || 0)} posts · ${numberFormatter.format(source.account?.averageViews || 0)} avg views` : source.platform === "meta" ? `${numberFormatter.format(source.account?.pageCount || 0)} Pages · ${numberFormatter.format(source.account?.instagramAccountCount || 0)} Instagram` : `${numberFormatter.format(source.account?.adAccounts || 0)} ad accounts`}</span></div>
         <div class="connection-actions"><button class="connection-button" type="button" data-connection-sync="${escapeHtml(source.platform)}">Sync now</button><button class="connection-link" type="button" data-connection-disconnect="${escapeHtml(source.platform)}">Disconnect</button></div>
       ` : source.configured && source.connectUrl ? `
         <a class="connection-button" href="${escapeHtml(source.connectUrl)}">Connect ${escapeHtml(source.label)} ↗</a>
@@ -228,6 +298,7 @@ function renderConnections(catalog) {
       `}
     </article>
   `).join("");
+  renderMetaPerformance(catalog);
   renderTikTokPerformance(catalog);
 }
 
