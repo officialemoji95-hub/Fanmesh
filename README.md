@@ -15,7 +15,7 @@ This repository contains a deployable proof of concept. Without Supabase configu
 - Scored fan records and identity graph demonstration
 - Campaign sequence recommendations for releases, sales, and community growth
 - Social connection capability catalog (official OAuth boundaries, no tokens)
-- Consent-checked ad-lead import preview with deterministic identity keys
+- Consent-checked CSV import with preview, deterministic identity keys, deduplication, provenance, and private-workspace persistence
 - Measured social distribution experiment planner with holdout cohorts
 - OpenAPI document at `/api/v1/openapi.json`
 - Render Blueprint and health check
@@ -79,7 +79,7 @@ Every score includes its component points and strongest signals. Sensitive trait
 
 ## The production direction
 
-Accounts, private workspaces, and the initial PostgreSQL schema are now implemented. The next milestone commits consented imports into those workspaces and adds the first official OAuth connection. The social-first slice is documented in [docs/SOCIAL-PHASE-1.md](docs/SOCIAL-PHASE-1.md). See [docs/AUTH-AND-SUPABASE.md](docs/AUTH-AND-SUPABASE.md), [docs/PRODUCT.md](docs/PRODUCT.md), [docs/API.md](docs/API.md), and [docs/SECURITY.md](docs/SECURITY.md).
+Accounts, private workspaces, and consented audience imports are now implemented. The next provider milestone is the first official Meta OAuth connection and webhook-backed lead sync. The social-first slice is documented in [docs/SOCIAL-PHASE-1.md](docs/SOCIAL-PHASE-1.md), and the CSV contract is in [docs/AUDIENCE-IMPORT.md](docs/AUDIENCE-IMPORT.md). See [docs/AUTH-AND-SUPABASE.md](docs/AUTH-AND-SUPABASE.md), [docs/PRODUCT.md](docs/PRODUCT.md), [docs/API.md](docs/API.md), and [docs/SECURITY.md](docs/SECURITY.md).
 
 ## Non-goals
 

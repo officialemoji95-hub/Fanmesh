@@ -7,21 +7,22 @@ The first social milestone is an orchestration layer, not an algorithm bypass. I
 - Keeps social account connections scoped to official OAuth and creator-owned assets.
 - Separates platform-gated follower counts from identities the creator can directly reach.
 - Accepts ad leads only when a row includes a usable contact method and consent provenance.
-- Produces deterministic, hashed contact keys so a future database can deduplicate a fan without exposing raw contact data in a plan.
+- Produces deterministic, hashed contact keys and uses them to merge repeat imports inside the creator's private workspace.
 - Builds a post plan with native publishing, consented direct channels, authorized ad audiences, a holdout cohort, and outcome metrics.
 
 ## What this phase does not do
 
 FanMesh does not scrape followers, collect passwords, imitate user activity, buy or append contact lists, send unsolicited bulk messages, or guarantee that a platform will put a post in every follower's feed. A platform follower count is a reach signal, not a portable audience list.
 
-The prototype returns `demo: true` and does not persist connections, leads, tokens, campaigns, or events. The production service will add organization-scoped authentication, Postgres/Supabase persistence, encrypted secret storage, signed webhooks, deletion workflows, and provider-specific OAuth adapters.
+Supabase-backed account mode now persists authorized leads, consent events, and draft social experiments behind workspace row-level security. Social provider connections and execution still require official OAuth, encrypted token storage, signed webhooks, deletion workflows, and provider-specific adapters.
 
 ## API flow
 
 1. `GET /api/v1/connections` shows the capability boundary for Instagram/Meta, TikTok, YouTube, Spotify, and authorized lead sources.
 2. `POST /api/v1/imports/leads/preview` validates a user-provided export before anything is stored. Fix rows with invalid contact fields or missing consent provenance.
-3. `POST /api/v1/experiments/social` drafts the next post's distribution sequence. It defaults to a 10% holdout of eligible direct identities and explicitly labels platform-only followers as gated.
-4. A future authenticated worker will execute only the steps whose provider connection and consent record are active, then record delivery, click, save, and conversion events.
+3. `POST /api/v1/imports/leads/commit` revalidates and saves accepted identities only after the creator confirms the source and consent accuracy.
+4. `POST /api/v1/experiments/social` drafts the next post's distribution sequence. It defaults to a 10% holdout of eligible direct identities and explicitly labels platform-only followers as gated.
+5. A future authenticated worker will execute only the steps whose provider connection and consent record are active, then record delivery, click, save, and conversion events.
 
 ## Provider setup needed before production execution
 

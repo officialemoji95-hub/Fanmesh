@@ -109,6 +109,7 @@ export function createAuthService({ environment = process.env, fetchImpl = globa
     try {
       response = await fetchImpl(`${config.url}/auth/v1${path}`, {
         method,
+        signal: AbortSignal.timeout(12000),
         headers: {
           apikey: config.key,
           ...(token ? { authorization: `Bearer ${token}` } : {}),

@@ -50,6 +50,7 @@ export function createWorkspaceStore({ environment = process.env, fetchImpl = gl
     try {
       response = await fetchImpl(`${config.url}${path}`, {
         method,
+        signal: AbortSignal.timeout(12000),
         headers: {
           apikey: config.key,
           authorization: `Bearer ${token}`,
@@ -140,5 +141,172 @@ export function createWorkspaceStore({ environment = process.env, fetchImpl = gl
     return { ...plan, databaseId: rows?.[0]?.id, status: "saved" };
   }
 
-  return Object.freeze({ config, getDashboard, saveExperiment, workspaceFor });
+  function chunks(values, size = 75) {
+    const result = [];
+    for (let index = 0; index < values.length; index += size) result.push(values.slice(index, index + size));
+    return result;
+  }
+
+  function unique(values = []) {
+    return [...new Set(values.filter(Boolean))];
+  }
+
+  function latestTimestamp(first, second) {
+    const firstTime = Date.parse(first || "");
+    const secondTime = Date.parse(second || "");
+    if (!Number.isFinite(firstTime)) return second;
+    if (!Number.isFinite(secondTime)) return first;
+    return firstTime >= secondTime ? first : second;
+  }
+
+  function consentKey({ fan_id: fanId, channel, status, source, occurred_at: occurredAt }) {
+    const timestamp = Number.isFinite(Date.parse(occurredAt || "")) ? new Date(occurredAt).toISOString() : occurredAt;
+    return `${fanId}|${channel}|${status}|${source}|${timestamp}`;
+  }
+
+  async function existingFans(workspaceId, token, contactKeys) {
+    const rows = [];
+    for (const group of chunks(contactKeys)) {
+      const filter = group.join(",");
+      const result = await request(
+        `/rest/v1/fans?select=id,contact_key,display_name,email,phone,location,channels,consented_channels,metrics,source_provenance,last_seen&workspace_id=eq.${queryValue(workspaceId)}&contact_key=in.(${filter})`,
+        token,
+      );
+      rows.push(...(result || []));
+    }
+    return new Map(rows.map((row) => [row.contact_key, row]));
+  }
+
+  async function existingConsentKeys(workspaceId, token, fanIds) {
+    const keys = new Set();
+    for (const group of chunks(fanIds)) {
+      const filter = group.join(",");
+      const rows = await request(
+        `/rest/v1/consents?select=fan_id,channel,status,source,occurred_at&workspace_id=eq.${queryValue(workspaceId)}&fan_id=in.(${filter})`,
+        token,
+      );
+      for (const row of rows || []) keys.add(consentKey(row));
+    }
+    return keys;
+  }
+
+  function fanRow(workspaceId, lead, existing, importedAt) {
+    const provenanceEntry = {
+      source: lead.source,
+      sourceKey: lead.sourceKey,
+      sourceId: lead.sourceId || null,
+      campaignId: lead.campaignId || null,
+      utm: lead.utm,
+      consentSource: lead.consent.source,
+      consentAt: lead.consent.at,
+      importedAt,
+    };
+    const priorSources = Array.isArray(existing?.source_provenance?.sources)
+      ? existing.source_provenance.sources
+      : [];
+    const sources = [...priorSources.filter((item) => item?.sourceKey !== lead.sourceKey), provenanceEntry].slice(-25);
+    return {
+      workspace_id: workspaceId,
+      contact_key: lead.contactKey,
+      display_name: lead.name || existing?.display_name || "Consented fan",
+      email: lead.email || existing?.email || null,
+      phone: lead.phone || existing?.phone || null,
+      location: lead.location || existing?.location || null,
+      channels: unique([...(existing?.channels || []), ...lead.consent.channels]),
+      consented_channels: unique([...(existing?.consented_channels || []), ...lead.consent.channels]),
+      metrics: {
+        ...(existing?.metrics || {}),
+        directOptIn: true,
+        latestImportSource: lead.source,
+        latestImportAt: importedAt,
+      },
+      source_provenance: { version: 1, sources, latest: provenanceEntry },
+      last_seen: latestTimestamp(existing?.last_seen, lead.consent.at),
+      updated_at: importedAt,
+    };
+  }
+
+  async function commitLeadImport(user, token, preview) {
+    const workspace = await workspaceFor(user, token);
+    const importedAt = new Date().toISOString();
+    const source = preview.source || "csv";
+    const runRows = await request("/rest/v1/import_runs", token, {
+      method: "POST",
+      prefer: "return=representation",
+      body: [{
+        workspace_id: workspace.id,
+        created_by: user.id,
+        source,
+        received_count: preview.summary.received,
+        accepted_count: 0,
+        rejected_count: preview.summary.invalid,
+        status: "processing",
+      }],
+    });
+    const importRunId = runRows?.[0]?.id;
+    if (!importRunId) throw new DatabaseError("Audience import could not be started", 502);
+
+    try {
+      const previous = await existingFans(workspace.id, token, preview.valid.map((lead) => lead.contactKey));
+      const rows = preview.valid.map((lead) => fanRow(workspace.id, lead, previous.get(lead.contactKey), importedAt));
+      const savedFans = rows.length ? await request(
+        "/rest/v1/fans?on_conflict=workspace_id,contact_key&select=id,contact_key",
+        token,
+        { method: "POST", prefer: "resolution=merge-duplicates,return=representation", body: rows },
+      ) : [];
+      const fanIds = new Map((savedFans || []).map((row) => [row.contact_key, row.id]));
+      if (fanIds.size !== rows.length) throw new DatabaseError("Some audience records could not be confirmed", 502);
+
+      const existingKeys = await existingConsentKeys(workspace.id, token, [...fanIds.values()]);
+      const consentRows = preview.valid.flatMap((lead) => lead.consent.channels.map((channel) => {
+        const fanId = fanIds.get(lead.contactKey);
+        return {
+          workspace_id: workspace.id,
+          fan_id: fanId,
+          channel,
+          purpose: "creator_updates",
+          status: "granted",
+          source: lead.consent.source,
+          occurred_at: lead.consent.at,
+        };
+      })).filter((row) => !existingKeys.has(consentKey(row)));
+
+      if (consentRows.length) {
+        await request("/rest/v1/consents", token, {
+          method: "POST",
+          prefer: "return=minimal",
+          body: consentRows,
+        });
+      }
+      await request(`/rest/v1/import_runs?id=eq.${queryValue(importRunId)}`, token, {
+        method: "PATCH",
+        prefer: "return=minimal",
+        body: { accepted_count: rows.length, status: "completed" },
+      });
+      return {
+        id: importRunId,
+        source,
+        received: preview.summary.received,
+        accepted: rows.length,
+        rejected: preview.summary.invalid,
+        created: rows.filter((row) => !previous.has(row.contact_key)).length,
+        updated: rows.filter((row) => previous.has(row.contact_key)).length,
+        consentEventsAdded: consentRows.length,
+        status: "completed",
+      };
+    } catch (error) {
+      try {
+        await request(`/rest/v1/import_runs?id=eq.${queryValue(importRunId)}`, token, {
+          method: "PATCH",
+          prefer: "return=minimal",
+          body: { status: "failed" },
+        });
+      } catch {
+        // Preserve the original import failure.
+      }
+      throw error;
+    }
+  }
+
+  return Object.freeze({ commitLeadImport, config, getDashboard, saveExperiment, workspaceFor });
 }

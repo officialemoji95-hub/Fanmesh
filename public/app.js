@@ -5,6 +5,7 @@ let fanRecords = [];
 let audienceState = { totalFollowers: 0, identifiedFans: 0, directConnections: 0 };
 let authState = { configured: false, authenticated: false, mode: "demo" };
 let authMode = "signin";
+let pendingImport = null;
 
 function showToast(message) {
   clearTimeout(toastTimer);
@@ -20,6 +21,94 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+const importHeaderAliases = Object.freeze({
+  name: "name",
+  fullname: "name",
+  displayname: "name",
+  email: "email",
+  emailaddress: "email",
+  phone: "phone",
+  phonenumber: "phone",
+  mobile: "phone",
+  location: "location",
+  city: "location",
+  sourceid: "sourceId",
+  leadid: "sourceId",
+  leadgenid: "sourceId",
+  consent: "consent",
+  marketingconsent: "consent",
+  optedincare: "consent",
+  optedin: "consent",
+  consentat: "consentAt",
+  createdtime: "consentAt",
+  createdat: "consentAt",
+  consentsource: "consentSource",
+  consentchannels: "consentChannels",
+  consentchannel: "consentChannels",
+  campaignid: "campaignId",
+  utmsource: "utmSource",
+  utmmedium: "utmMedium",
+  utmcampaign: "utmCampaign",
+});
+
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let field = "";
+  let quoted = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (quoted) {
+      if (character === '"' && text[index + 1] === '"') {
+        field += '"';
+        index += 1;
+      } else if (character === '"') {
+        quoted = false;
+      } else {
+        field += character;
+      }
+    } else if (character === '"') {
+      quoted = true;
+    } else if (character === ",") {
+      row.push(field);
+      field = "";
+    } else if (character === "\n") {
+      row.push(field.replace(/\r$/, ""));
+      if (row.some((value) => value.trim())) rows.push(row);
+      row = [];
+      field = "";
+    } else {
+      field += character;
+    }
+  }
+  row.push(field.replace(/\r$/, ""));
+  if (row.some((value) => value.trim())) rows.push(row);
+  if (quoted) throw new Error("The CSV contains an unclosed quoted field");
+  return rows;
+}
+
+function recordsFromCsv(text) {
+  const table = parseCsv(text.replace(/^\uFEFF/, ""));
+  if (table.length < 2) throw new Error("The CSV needs a header and at least one data row");
+  const headers = table[0].map((header) => importHeaderAliases[header.toLowerCase().replace(/[^a-z0-9]+/g, "")] || "");
+  if (!headers.includes("email") && !headers.includes("phone")) throw new Error("Add an email or phone column");
+  return table.slice(1).map((values) => Object.fromEntries(headers.flatMap((header, index) => header ? [[header, values[index]?.trim() || ""]] : [])));
+}
+
+function renderImportPreview(preview, { committed = false } = {}) {
+  const target = document.querySelector("#import-preview");
+  if (committed) {
+    target.className = "import-preview success";
+    target.innerHTML = `<strong>${numberFormatter.format(preview.accepted)} records committed</strong><span>${numberFormatter.format(preview.created)} new · ${numberFormatter.format(preview.updated)} updated · ${numberFormatter.format(preview.consentEventsAdded)} consent events added</span>`;
+    return;
+  }
+  const errors = preview.invalid.slice(0, 5).map((item) => `<li>Row ${numberFormatter.format(item.row)}: ${escapeHtml(item.reason)}</li>`).join("");
+  target.className = `import-preview ${preview.summary.valid ? "ready" : "error"}`;
+  target.innerHTML = `
+    <div class="import-summary"><strong>${numberFormatter.format(preview.summary.valid)} accepted</strong><span>${numberFormatter.format(preview.summary.invalid)} rejected · ${numberFormatter.format(preview.summary.duplicates)} duplicates</span></div>
+    ${errors ? `<ul>${errors}</ul>${preview.invalid.length > 5 ? `<small>And ${numberFormatter.format(preview.invalid.length - 5)} more rejected rows.</small>` : ""}` : "<span>Consent and identity checks passed. Nothing has been saved yet.</span>"}`;
 }
 
 function channelMarkup(channels) {
@@ -162,6 +251,9 @@ async function loadDashboard() {
   } catch (error) {
     document.querySelector("#recommendations").innerHTML = `<p class="loading">${escapeHtml(error.message)}</p>`;
     document.querySelector("#fan-table").innerHTML = `<tr><td colspan="6" class="loading">${escapeHtml(error.message)}</td></tr>`;
+    document.querySelector("#capture-count").textContent = "Unavailable";
+    document.querySelector("#capture-note").textContent = error.message;
+    document.querySelector("#audience-mode").textContent = "Workspace data could not be loaded";
   }
 }
 
@@ -295,6 +387,75 @@ document.querySelector("#social-experiment-form").addEventListener("submit", asy
   } finally {
     submitButton.disabled = false;
     submitButton.textContent = "Build reach plan ↗";
+  }
+});
+
+document.querySelector("#audience-import-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector("button[type=submit]");
+  const file = form.elements.file.files?.[0];
+  const authorization = document.querySelector("#import-authorized");
+  const commitButton = document.querySelector("#commit-import");
+  button.disabled = true;
+  button.textContent = "Checking file…";
+  authorization.checked = false;
+  authorization.disabled = true;
+  commitButton.disabled = true;
+  pendingImport = null;
+  try {
+    if (!file) throw new Error("Choose a CSV file first");
+    if (file.size > 1.8 * 1024 * 1024) throw new Error("CSV files must be smaller than 1.8 MB");
+    const source = form.elements.source.value;
+    const rows = recordsFromCsv(await file.text()).map((row) => ({ ...row, source }));
+    const response = await fetch("/api/v1/imports/leads/preview", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ source, rows }),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error?.message || "Could not preview this import");
+    pendingImport = { source, rows, preview: body.data };
+    renderImportPreview(body.data);
+    authorization.disabled = body.data.summary.valid === 0;
+  } catch (error) {
+    const target = document.querySelector("#import-preview");
+    target.className = "import-preview error";
+    target.innerHTML = `<strong>Preview failed</strong><span>${escapeHtml(error.message)}</span>`;
+  } finally {
+    button.disabled = false;
+    button.textContent = "Preview import";
+  }
+});
+
+document.querySelector("#import-authorized").addEventListener("change", (event) => {
+  document.querySelector("#commit-import").disabled = !event.currentTarget.checked || !pendingImport?.preview?.summary.valid;
+});
+
+document.querySelector("#commit-import").addEventListener("click", async (event) => {
+  const button = event.currentTarget;
+  if (!pendingImport || !document.querySelector("#import-authorized").checked) return;
+  button.disabled = true;
+  button.textContent = "Committing records…";
+  try {
+    const response = await fetch("/api/v1/imports/leads/commit", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ source: pendingImport.source, rows: pendingImport.rows, confirmedAuthorized: true }),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error?.message || "Could not commit this import");
+    renderImportPreview(body.data, { committed: true });
+    pendingImport = null;
+    document.querySelector("#import-authorized").checked = false;
+    document.querySelector("#import-authorized").disabled = true;
+    await loadDashboard();
+    showToast("Authorized audience records are now in your private workspace.");
+  } catch (error) {
+    showToast(error.message);
+    button.disabled = false;
+  } finally {
+    button.textContent = "Commit accepted records ↗";
   }
 });
 

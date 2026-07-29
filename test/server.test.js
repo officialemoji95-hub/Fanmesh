@@ -33,7 +33,7 @@ async function dispatch({ method = "GET", url = "/", body = "", handler = handle
 test("health endpoint reports an operational service", async () => {
   const response = await dispatch({ url: "/api/health" });
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.2.0", database: "demo" });
+  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.3.0", database: "demo" });
 });
 
 test("auth session clearly reports unconfigured demo mode", async () => {
@@ -157,6 +157,62 @@ test("lead preview endpoint returns consent validation results", async () => {
   const body = response.json();
   assert.equal(response.statusCode, 200);
   assert.equal(body.data.summary.valid, 1);
+});
+
+test("lead commit requires an explicit authorized-data confirmation", async () => {
+  const handler = createRequestHandler({
+    authService: {
+      config: { configured: true },
+      async session() {
+        return { data: { authenticated: true, accessToken: "token", user: { id: "user-1" } }, cookies: [] };
+      },
+    },
+    workspaceStore: { async commitLeadImport() { throw new Error("should not be called"); } },
+  });
+  const response = await dispatch({
+    method: "POST",
+    url: "/api/v1/imports/leads/commit",
+    body: JSON.stringify({ source: "csv", rows: [{ email: "fan@example.com" }] }),
+    handler,
+  });
+  assert.equal(response.statusCode, 400);
+  assert.match(response.json().error.message, /Confirm/);
+});
+
+test("authorized lead commits are revalidated and persisted through the workspace store", async () => {
+  let persistedPreview;
+  const handler = createRequestHandler({
+    authService: {
+      config: { configured: true },
+      async session() {
+        return {
+          data: { authenticated: true, accessToken: "token", user: { id: "user-1" } },
+          cookies: ["refreshed=cookie"],
+        };
+      },
+    },
+    workspaceStore: {
+      async commitLeadImport(user, token, preview) {
+        assert.equal(user.id, "user-1");
+        assert.equal(token, "token");
+        persistedPreview = preview;
+        return { id: "run-1", accepted: 1, rejected: 0, created: 1, updated: 0, consentEventsAdded: 1, status: "completed" };
+      },
+    },
+  });
+  const response = await dispatch({
+    method: "POST",
+    url: "/api/v1/imports/leads/commit",
+    body: JSON.stringify({
+      source: "meta_ads",
+      confirmedAuthorized: true,
+      rows: [{ email: "fan@example.com", consent: true, consentAt: "2026-07-25", consentSource: "meta-lead-form" }],
+    }),
+    handler,
+  });
+  assert.equal(response.statusCode, 201);
+  assert.equal(response.json().meta.persisted, true);
+  assert.equal(persistedPreview.summary.valid, 1);
 });
 
 test("social experiment endpoint returns a measured distribution plan", async () => {

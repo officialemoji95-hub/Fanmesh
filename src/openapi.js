@@ -2,7 +2,7 @@ export const openApiDocument = {
   openapi: "3.1.0",
   info: {
     title: "FanMesh API",
-    version: "0.2.0",
+    version: "0.3.0",
     description: "Audience intelligence API for consented fan relationships.",
   },
   servers: [{ url: "/api/v1" }],
@@ -97,6 +97,17 @@ export const openApiDocument = {
           } } },
         },
         responses: { 200: { description: "Import preview" }, 400: { description: "Invalid or unconsented rows" } },
+      },
+    },
+    "/imports/leads/commit": {
+      post: {
+        summary: "Revalidate and commit authorized audience records to the signed-in workspace",
+        security: [{ creatorSession: [] }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { type: "object", required: ["source", "rows", "confirmedAuthorized"] } } },
+        },
+        responses: { 201: { description: "Import completed" }, 400: { description: "Invalid, unconfirmed, or unconsented records" }, 401: { description: "Sign-in required" } },
       },
     },
     "/experiments/social": {
