@@ -57,16 +57,48 @@ function renderRecommendations(recommendations) {
     </article>`).join("");
 }
 
+function capabilityLabel(capability) {
+  return capability.replaceAll("_", " ");
+}
+
+function renderConnections(catalog) {
+  const sourceGrid = document.querySelector("#source-grid");
+  const sources = [...catalog.social.slice(0, 4), ...catalog.imports.slice(0, 1)];
+  sourceGrid.innerHTML = sources.map((source) => `
+    <article class="source-card">
+      <div class="source-icon ${escapeHtml(source.platform)}">${escapeHtml(source.platform.slice(0, 2))}</div>
+      <div class="source-info"><strong>${escapeHtml(source.label)}</strong><span>${escapeHtml(source.status.replaceAll("_", " "))}</span></div>
+      <button class="icon-button source-action" data-toast="${escapeHtml(source.authMethod === "oauth" ? "OAuth connection setup is the next production step." : "Use an official export with consent provenance.")}" aria-label="About ${escapeHtml(source.label)}">•••</button>
+      <p>${escapeHtml(source.caveat || "Import only records you are authorized to use.")}</p>
+      <div class="source-tags">${source.capabilities.slice(0, 2).map((capability) => `<span>${escapeHtml(capabilityLabel(capability))}</span>`).join("")}</div>
+    </article>
+  `).join("");
+}
+
+function renderSocialPlan(plan) {
+  const result = document.querySelector("#social-plan-result");
+  result.className = "plan-preview plan-result";
+  result.innerHTML = `
+    <div class="plan-result-heading"><div><p class="eyebrow">Draft ${escapeHtml(plan.id)}</p><h3>${escapeHtml(plan.contentId)} distribution</h3></div><span class="status good">${escapeHtml(plan.status)}</span></div>
+    <p class="plan-audience"><strong>${numberFormatter.format(plan.audience.eligibleDirect)}</strong> eligible direct identities · ${escapeHtml(String(plan.audience.holdoutPercent))}% holdout</p>
+    <div class="social-steps">${plan.steps.map((step) => `
+      <div class="social-step"><b>0${escapeHtml(String(step.order))}</b><span><strong>${escapeHtml(step.channel)}</strong><small>${escapeHtml(step.audience)}</small></span><p>${escapeHtml(step.action)}</p></div>
+    `).join("")}</div>
+    <div class="guardrail"><strong>Guardrails:</strong> ${escapeHtml(plan.guardrails[0])}</div>`;
+}
+
 async function loadDashboard() {
   try {
-    const [insightsResponse, fansResponse] = await Promise.all([
+    const [insightsResponse, fansResponse, connectionsResponse] = await Promise.all([
       fetch("/api/v1/insights"),
       fetch("/api/v1/fans?limit=20"),
+      fetch("/api/v1/connections"),
     ]);
-    if (!insightsResponse.ok || !fansResponse.ok) throw new Error("Dashboard API unavailable");
-    const [{ data: insights }, { data: fans }] = await Promise.all([
+    if (!insightsResponse.ok || !fansResponse.ok || !connectionsResponse.ok) throw new Error("Dashboard API unavailable");
+    const [{ data: insights }, { data: fans }, { data: connections }] = await Promise.all([
       insightsResponse.json(),
       fansResponse.json(),
+      connectionsResponse.json(),
     ]);
 
     const { snapshot } = insights;
@@ -75,6 +107,7 @@ async function loadDashboard() {
     document.querySelector("#direct-connections").textContent = numberFormatter.format(snapshot.directConnections);
     document.querySelector("#view-rate").textContent = `${snapshot.viewRate}%`;
     renderRecommendations(insights.recommendations);
+    renderConnections(connections);
     fanRecords = fans;
     renderFans(fanRecords);
   } catch (error) {
@@ -137,6 +170,36 @@ document.querySelector("#campaign-form").addEventListener("submit", async (event
   } finally {
     submitButton.disabled = false;
     submitButton.textContent = "Generate activation plan ↗";
+  }
+});
+
+document.querySelector("#social-experiment-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const submitButton = event.currentTarget.querySelector("button[type=submit]");
+  const formData = new FormData(event.currentTarget);
+  const input = {
+    contentId: formData.get("contentId"),
+    objective: formData.get("objective"),
+    platforms: formData.getAll("platforms"),
+    channels: formData.getAll("channels"),
+    candidateCounts: { followers: 118000, adLeads: 0, optedInFans: 1926 },
+  };
+  submitButton.disabled = true;
+  submitButton.textContent = "Building plan…";
+  try {
+    const response = await fetch("/api/v1/experiments/social", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    if (!response.ok) throw new Error("Could not build the social plan");
+    const { data } = await response.json();
+    renderSocialPlan(data);
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = "Build reach plan ↗";
   }
 });
 

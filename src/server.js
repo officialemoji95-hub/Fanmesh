@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { demoFans } from "./demo-data.js";
 import { buildInsights, recommendCampaign } from "./insights.js";
 import { openApiDocument } from "./openapi.js";
+import { getConnectionCatalog, planSocialExperiment, previewLeadImport } from "./social.js";
 import { scoreAudience, scoreFan } from "./scoring.js";
 
 const port = Number(process.env.PORT || 3000);
@@ -99,6 +100,13 @@ export async function handleRequest(request, response) {
     return sendJson(response, 200, { data: buildInsights(demoFans), meta: { demo: true } });
   }
 
+  if (request.method === "GET" && pathname === "/api/v1/connections") {
+    return sendJson(response, 200, {
+      data: getConnectionCatalog(),
+      meta: { demo: true, note: "Connection metadata only; OAuth and persistence are required for production." },
+    });
+  }
+
   if (request.method === "POST" && pathname === "/api/v1/score") {
     try {
       const metrics = await readJson(request);
@@ -112,6 +120,24 @@ export async function handleRequest(request, response) {
     try {
       const input = await readJson(request);
       return sendJson(response, 200, { data: recommendCampaign(input), meta: { demo: true } });
+    } catch (error) {
+      return sendJson(response, error.statusCode || 400, { error: { message: error.message } });
+    }
+  }
+
+  if (request.method === "POST" && pathname === "/api/v1/imports/leads/preview") {
+    try {
+      const input = await readJson(request);
+      return sendJson(response, 200, { data: previewLeadImport(input), meta: { demo: true } });
+    } catch (error) {
+      return sendJson(response, error.statusCode || 400, { error: { message: error.message } });
+    }
+  }
+
+  if (request.method === "POST" && pathname === "/api/v1/experiments/social") {
+    try {
+      const input = await readJson(request);
+      return sendJson(response, 200, { data: planSocialExperiment(input), meta: { demo: true } });
     } catch (error) {
       return sendJson(response, error.statusCode || 400, { error: { message: error.message } });
     }

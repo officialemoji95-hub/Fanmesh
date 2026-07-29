@@ -11,6 +11,9 @@ This repository contains a deployable proof of concept. It uses demo data and in
 - Explainable fan scoring API
 - Scored fan records and identity graph demonstration
 - Campaign sequence recommendations for releases, sales, and community growth
+- Social connection capability catalog (official OAuth boundaries, no tokens)
+- Consent-checked ad-lead import preview with deterministic identity keys
+- Measured social distribution experiment planner with holdout cohorts
 - OpenAPI document at `/api/v1/openapi.json`
 - Render Blueprint and health check
 - Node.js tests with no third-party runtime dependencies
@@ -64,7 +67,7 @@ Every score includes its component points and strongest signals. Sensitive trait
 
 ## The production direction
 
-The next milestone replaces demo data with organizations, authentication, PostgreSQL persistence, consent records, official OAuth connections, imports, and webhooks. See [docs/PRODUCT.md](docs/PRODUCT.md), [docs/API.md](docs/API.md), and [docs/SECURITY.md](docs/SECURITY.md).
+The next milestone replaces demo data with organizations, authentication, PostgreSQL persistence, consent records, official OAuth connections, imports, and webhooks. The social-first slice is documented in [docs/SOCIAL-PHASE-1.md](docs/SOCIAL-PHASE-1.md). See [docs/PRODUCT.md](docs/PRODUCT.md), [docs/API.md](docs/API.md), and [docs/SECURITY.md](docs/SECURITY.md).
 
 ## Non-goals
 

@@ -84,6 +84,47 @@
           </article>
         </section>
 
+        <section class="panel social-launchpad" id="connections">
+          <div class="panel-heading">
+            <div><p class="eyebrow">Social launchpad</p><h2>Reach the people you are allowed to reach</h2></div>
+            <span class="status good">Consent-first</span>
+          </div>
+          <p class="panel-copy">Connect creator accounts through official OAuth, bring in first-party ad leads, and test delivery with a holdout. FanMesh can improve eligible reach and attribution; no tool can guarantee a feed impression for every follower.</p>
+          <div class="source-grid" id="source-grid" aria-live="polite">
+            <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
+          </div>
+          <div class="social-planner">
+            <div>
+              <p class="eyebrow">First experiment</p>
+              <h3>Plan one post across your authorized channels</h3>
+              <p class="planner-copy">This creates a draft sequence. Publishing and ad activation happen only after the account owner completes each platform's authorization.</p>
+              <form id="social-experiment-form">
+                <label>Post or release ID<input name="contentId" value="next-post" maxlength="100"></label>
+                <label>Objective<select name="objective"><option value="evergreen">Keep a post moving</option><option value="release">Release music or content</option><option value="sales">Drive sales</option><option value="community">Grow community</option></select></label>
+                <fieldset>
+                  <legend>Creator accounts</legend>
+                  <label class="check"><input type="checkbox" name="platforms" value="instagram" checked> Instagram</label>
+                  <label class="check"><input type="checkbox" name="platforms" value="facebook" checked> Facebook</label>
+                  <label class="check"><input type="checkbox" name="platforms" value="tiktok" checked> TikTok</label>
+                  <label class="check"><input type="checkbox" name="platforms" value="youtube" checked> YouTube</label>
+                </fieldset>
+                <fieldset>
+                  <legend>Reach paths</legend>
+                  <label class="check"><input type="checkbox" name="channels" value="native_social" checked> Native posts</label>
+                  <label class="check"><input type="checkbox" name="channels" value="consented_direct" checked> Opted-in direct</label>
+                  <label class="check"><input type="checkbox" name="channels" value="authorized_ads" checked> Authorized ads</label>
+                </fieldset>
+                <button class="button primary" type="submit">Build reach plan ↗</button>
+              </form>
+            </div>
+            <article class="plan-preview" id="social-plan-result" aria-live="polite">
+              <span class="sequence-icon">◎</span>
+              <h3>Your measured distribution plan will appear here</h3>
+              <p>Start with a post ID and select the channels you have permission to use.</p>
+            </article>
+          </div>
+        </section>
+
         <section class="dashboard-grid">
           <article class="panel reach-panel">
             <div class="panel-heading">
@@ -111,7 +152,7 @@
             </div>
           </article>
 
-          <article class="panel orbit-panel" id="connections">
+          <article class="panel orbit-panel" id="identity-graph">
             <div class="panel-heading">
               <div><p class="eyebrow">Identity graph</p><h2>One fan. Every signal.</h2></div>
               <button class="icon-button" data-toast="Graph settings will be available after real data connections.">•••</button>

@@ -62,3 +62,34 @@ test("campaign endpoint builds a release sequence", async () => {
   assert.equal(body.data.objective, "release");
   assert.ok(body.data.sequence.length >= 3);
 });
+
+test("connections endpoint exposes authorized source contracts", async () => {
+  const response = await dispatch({ url: "/api/v1/connections" });
+  const body = response.json();
+  assert.equal(response.statusCode, 200);
+  assert.ok(body.data.social.some((source) => source.platform === "instagram"));
+  assert.ok(body.data.imports.some((source) => source.platform === "csv"));
+});
+
+test("lead preview endpoint returns consent validation results", async () => {
+  const response = await dispatch({
+    method: "POST",
+    url: "/api/v1/imports/leads/preview",
+    body: JSON.stringify({ rows: [{ email: "fan@example.com", consent: true, consentAt: "2026-07-25", consentSource: "form" }] }),
+  });
+  const body = response.json();
+  assert.equal(response.statusCode, 200);
+  assert.equal(body.data.summary.valid, 1);
+});
+
+test("social experiment endpoint returns a measured distribution plan", async () => {
+  const response = await dispatch({
+    method: "POST",
+    url: "/api/v1/experiments/social",
+    body: JSON.stringify({ contentId: "post-1", candidateCounts: { optedInFans: 100 } }),
+  });
+  const body = response.json();
+  assert.equal(response.statusCode, 200);
+  assert.equal(body.data.status, "draft");
+  assert.ok(body.data.steps.some((step) => step.id === "measure"));
+});
