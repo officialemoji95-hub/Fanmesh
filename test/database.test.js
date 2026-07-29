@@ -102,12 +102,18 @@ test("OAuth connections persist encrypted metadata and refresh aggregate audienc
     scopes: ["user.info.basic"],
     metadata: {
       credentials: "v1.encrypted.only",
-      public: { profile: { name: "Artist", username: "artist" } },
-      metrics: { totalFollowers: 118000, adAccounts: 0 },
+      public: {
+        profile: { name: "Artist", username: "artist" },
+        recentVideos: [{ id: "video-1", title: "Release day", shareUrl: "https://www.tiktok.com/@artist/video/1", views: 1200, likes: 120, comments: 12, shares: 6 }],
+      },
+      metrics: { totalFollowers: 118000, averageViews: 1200, medianViews: 1200, engagementRate: 11.5, recentVideoCount: 1, totalRecentViews: 1200, adAccounts: 0 },
     },
   });
   assert.equal(saved.account.name, "Artist");
   assert.equal(saved.account.followers, 118000);
+  assert.equal(saved.account.averageViews, 1200);
+  assert.equal(saved.account.engagementRate, 11.5);
+  assert.equal(saved.account.recentVideos[0].title, "Release day");
   assert.equal(JSON.stringify(saved).includes("credentials"), false);
   const snapshotCall = calls.find((call) => call.url.endsWith("/rest/v1/audience_snapshots"));
   assert.equal(JSON.parse(snapshotCall.options.body)[0].total_followers, 118000);

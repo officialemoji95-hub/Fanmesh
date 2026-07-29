@@ -17,6 +17,7 @@ This repository contains a deployable proof of concept. Without Supabase configu
 - Official Meta, TikTok, Snapchat, X, and Threads OAuth connection flows
 - Signed OAuth state, X PKCE, server-side code exchange, and encrypted token storage
 - Authorized creator/business account discovery, aggregate metrics, manual sync, and disconnect
+- TikTok latest-public-post sync with explainable average views, median views, and engagement-per-view metrics
 - Consent-checked CSV import with preview, deterministic identity keys, deduplication, provenance, and private-workspace persistence
 - Measured social distribution experiment planner with holdout cohorts
 - OpenAPI document at `/api/v1/openapi.json`

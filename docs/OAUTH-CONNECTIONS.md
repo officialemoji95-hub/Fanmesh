@@ -53,6 +53,15 @@ TIKTOK_CLIENT_SECRET=
 
 The default Login Kit scopes are `user.info.basic`, `user.info.stats`, and `video.list`. Some scopes require approval. TikTok for Business ad accounts use a separate developer product and authorization; they are not silently included in Login Kit.
 
+Each TikTok connection or manual sync reads the creator profile and up to the 20 most recent public posts through TikTok's official Display API. FanMesh stores safe post metadata and the returned view, like, comment, and share totals in the encrypted creator workspace. It calculates:
+
+- average views across the returned posts;
+- median views across the same window;
+- engagement per view as `(likes + comments + shares) / views`;
+- the latest-post timestamp and aggregate interaction totals.
+
+This is an explicit `latest_20_public_posts` measurement window, not a claim about every historical post or every follower. FanMesh never treats TikTok OAuth as permission to enumerate or contact followers.
+
 ## Snapchat
 
 Create the OAuth app under Snap Business Manager → Business Details, not a consumer login integration. Register the Snapchat callback and add:

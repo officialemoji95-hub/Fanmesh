@@ -35,7 +35,7 @@ Returns the audience snapshot, tier distribution, reach-health ratios, and recom
 
 ### `GET /api/v1/connections`
 
-Returns the social-account and lead-source capability catalog. Prototype responses contain no access tokens and report every source as unconnected or ready for an authorized import.
+Returns the social-account and lead-source capability catalog without access tokens. A connected TikTok account includes its safe profile summary, latest-public-post performance metrics, and up to 20 normalized public video records returned by the official `video.list` scope.
 
 ### `POST /api/v1/score`
 
