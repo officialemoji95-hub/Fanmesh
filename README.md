@@ -21,6 +21,7 @@ This repository contains a deployable proof of concept. Without Supabase configu
 - Server-side Meta Instant Form lead preview and consent-confirmed import with no contact fields returned in the preview response
 - TikTok latest-public-post sync with explainable average views, median views, and engagement-per-view metrics
 - Consent-checked CSV import with preview, deterministic identity keys, deduplication, provenance, and private-workspace persistence
+- Official Facebook, Instagram, TikTok, and YouTube follower-download ingestion from JSON/CSV, with large-file batching and a strict platform-only activation boundary
 - Measured social distribution experiment planner with holdout cohorts
 - OpenAPI document at `/api/v1/openapi.json`
 - Render Blueprint and health check
@@ -86,7 +87,7 @@ Every score includes its component points and strongest signals. Sensitive trait
 
 ## The production direction
 
-Accounts, private workspaces, consented audience imports, and the multi-provider OAuth foundation are implemented. Meta now measures authorized Instagram post health and can pull up to 100 submissions from selected Instant Forms after the creator confirms the form disclosure and permitted channels. The next Meta milestone is signed webhook delivery for new leads plus form-specific consent-field rules. See [docs/OAUTH-CONNECTIONS.md](docs/OAUTH-CONNECTIONS.md), [docs/SOCIAL-PHASE-1.md](docs/SOCIAL-PHASE-1.md), [docs/AUDIENCE-IMPORT.md](docs/AUDIENCE-IMPORT.md), [docs/AUTH-AND-SUPABASE.md](docs/AUTH-AND-SUPABASE.md), [docs/PRODUCT.md](docs/PRODUCT.md), [docs/API.md](docs/API.md), and [docs/SECURITY.md](docs/SECURITY.md).
+Accounts, private workspaces, consented lead imports, official platform-download ingestion, and the multi-provider OAuth foundation are implemented. Meta measures authorized Instagram post health; automatic Instant Form retrieval remains available only when Meta grants the required app and Page permissions. Creators without Meta business verification can still import official data downloads and exported ad leads without uploading business documents to FanMesh. See [docs/OAUTH-CONNECTIONS.md](docs/OAUTH-CONNECTIONS.md), [docs/SOCIAL-PHASE-1.md](docs/SOCIAL-PHASE-1.md), [docs/AUDIENCE-IMPORT.md](docs/AUDIENCE-IMPORT.md), [docs/AUTH-AND-SUPABASE.md](docs/AUTH-AND-SUPABASE.md), [docs/PRODUCT.md](docs/PRODUCT.md), [docs/API.md](docs/API.md), and [docs/SECURITY.md](docs/SECURITY.md).
 
 ## Non-goals
 
