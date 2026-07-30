@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="FanMesh unifies consented fan relationships and turns them into useful audience intelligence.">
     <title>FanMesh — Own the relationship</title>
-    <link rel="stylesheet" href="/styles.css?v=0.6.0">
+    <link rel="stylesheet" href="/styles.css?v=0.7.0">
   </head>
   <body>
     <section class="auth-gate" id="auth-gate" aria-labelledby="auth-title" hidden>
@@ -115,6 +115,23 @@
             <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
           </div>
           <section class="platform-performance meta-performance" id="meta-performance" aria-live="polite" hidden></section>
+          <section class="meta-lead-import" id="meta-lead-import" aria-labelledby="meta-lead-import-title" hidden>
+            <div class="meta-lead-import-copy">
+              <p class="eyebrow">Meta Instant Forms</p>
+              <h3 id="meta-lead-import-title">Pull authorized leads into your private mesh</h3>
+              <p>FanMesh fetches the latest submissions server-side. Contact fields stay out of the preview response and nothing is saved until you confirm the selected forms' contact permission.</p>
+            </div>
+            <form id="meta-lead-import-form">
+              <fieldset id="meta-lead-form-list"><legend>Authorized forms</legend></fieldset>
+              <fieldset class="meta-lead-channels"><legend>Permitted channels</legend>
+                <label class="check"><input type="checkbox" name="consentChannels" value="email" checked> Email</label>
+                <label class="check"><input type="checkbox" name="consentChannels" value="sms"> SMS</label>
+              </fieldset>
+              <label class="authorization-check"><input id="meta-lead-authorized" type="checkbox"> I confirm I own these forms and their disclosure permits creator updates through the channels selected above.</label>
+              <div class="meta-lead-actions"><button class="button secondary" type="submit">Preview Meta leads</button><button class="button primary" id="commit-meta-leads" type="button" disabled>Commit accepted leads ↗</button></div>
+              <article class="import-preview" id="meta-lead-preview" aria-live="polite"><strong>No Meta leads previewed</strong><span>Select a form and confirm its consent disclosure first.</span></article>
+            </form>
+          </section>
           <section class="tiktok-performance" id="tiktok-performance" aria-live="polite" hidden></section>
           <p class="connection-setup-note">Developer apps must be configured before a Connect button activates. Platform review determines which profile, publishing, advertising and lead permissions are available.</p>
           <section class="import-workbench" aria-labelledby="import-title">
@@ -293,6 +310,6 @@
       </main>
     </div>
     <div class="toast" role="status" aria-live="polite"></div>
-    <script src="/app.js?v=0.6.0" type="module"></script>
+    <script src="/app.js?v=0.7.0" type="module"></script>
   </body>
 </html>

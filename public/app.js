@@ -6,6 +6,7 @@ let audienceState = { totalFollowers: 0, identifiedFans: 0, directConnections: 0
 let authState = { configured: false, authenticated: false, mode: "demo" };
 let authMode = "signin";
 let pendingImport = null;
+let pendingMetaLeadImport = null;
 
 function showToast(message) {
   clearTimeout(toastTimer);
@@ -246,8 +247,10 @@ function renderMetaPerformance(catalog) {
     const label = escapeHtml(post.caption || "Untitled Instagram post");
     return `<article class="meta-media-row">
       <div class="meta-media-title">${permalink ? `<a href="${escapeHtml(permalink)}" target="_blank" rel="noopener noreferrer">${label} ↗</a>` : `<strong>${label}</strong>`}<small>@${escapeHtml(post.username || "instagram")} · ${escapeHtml(shortDate(post.createdAt))}</small></div>
-      <span><b>${numberFormatter.format(post.likes || 0)}</b><small>organic likes</small></span>
-      <span><b>${numberFormatter.format(post.comments || 0)}</b><small>organic comments</small></span>
+      <span><b>${numberFormatter.format(post.views || 0)}</b><small>views</small></span>
+      <span><b>${numberFormatter.format(post.reach || 0)}</b><small>reach</small></span>
+      <span><b>${numberFormatter.format(post.totalInteractions || post.interactions || 0)}</b><small>interactions</small></span>
+      <span><b>${percent(post.engagementRate)}</b><small>engagement / reach</small></span>
     </article>`;
   }).join("");
   const issues = (Array.isArray(account.syncIssues) ? account.syncIssues : []).map((issue) =>
@@ -261,10 +264,10 @@ function renderMetaPerformance(catalog) {
       <span class="status ${issues ? "warning" : "good"}">${issues ? `${numberFormatter.format(account.syncIssues.length)} access item${account.syncIssues.length === 1 ? "" : "s"}` : "Authorized assets synced"}</span>
     </div>
     <div class="platform-performance-metrics">
-      <span><small>Facebook Pages</small><strong>${numberFormatter.format(account.pageCount || 0)}</strong></span>
-      <span><small>Instagram pros</small><strong>${numberFormatter.format(account.instagramAccountCount || 0)}</strong></span>
-      <span><small>Instant Forms</small><strong>${numberFormatter.format(account.leadFormCount || 0)}</strong></span>
-      <span><small>Known form leads</small><strong>${numberFormatter.format(account.knownLeads || 0)}</strong></span>
+      <span><small>Posts measured</small><strong>${numberFormatter.format(account.recentMediaCount || 0)}</strong></span>
+      <span><small>Average reach</small><strong>${numberFormatter.format(account.averageMetaReach || 0)}</strong></span>
+      <span><small>Median reach</small><strong>${numberFormatter.format(account.medianMetaReach || 0)}</strong></span>
+      <span><small>Engagement / reach</small><strong>${percent(account.metaEngagementRate)}</strong></span>
     </div>
     <div class="meta-ad-strip">
       <span><small>Ad spend · 30d</small><strong>${escapeHtml(formatMoney(ads.spend, ads.currency))}</strong></span>
@@ -274,8 +277,36 @@ function renderMetaPerformance(catalog) {
       <span><small>Reported leads · 30d</small><strong>${numberFormatter.format(ads.leads || 0)}</strong></span>
     </div>
     <div class="meta-media-list">${rows || `<p class="platform-empty">No authorized Instagram professional media was returned yet.</p>`}</div>
-    ${issues ? `<div class="meta-sync-issues"><strong>Finish Meta access</strong><ul>${issues}</ul></div>` : ""}
-    <p class="platform-method">Organic rows use basic metrics returned for your Instagram professional media and exclude ad-driven activity. Ad totals are account-level for Meta’s last-30-day preset. Form totals are inventory only—not permission to contact a lead.</p>`;
+    ${issues ? `<div class="meta-sync-issues"><strong>Finish Meta access</strong><ul>${issues}</ul>${source.connectUrl ? `<a class="text-link" href="${escapeHtml(source.connectUrl)}">Review Meta access ↗</a>` : ""}</div>` : ""}
+    <p class="platform-method">Post rows use authorized Instagram media insights and keep organic attention separate from account-level paid results. Meta can change metric availability by media type; missing values remain zero and sync issues stay visible.</p>`;
+}
+
+function renderMetaLeadImport(catalog) {
+  const target = document.querySelector("#meta-lead-import");
+  const form = document.querySelector("#meta-lead-import-form");
+  const list = document.querySelector("#meta-lead-form-list");
+  const source = catalog.social.find((item) => item.platform === "meta");
+  if (source?.status !== "connected" || !source.account) {
+    target.hidden = true;
+    pendingMetaLeadImport = null;
+    return;
+  }
+  const forms = Array.isArray(source.account.leadForms) ? source.account.leadForms : [];
+  target.hidden = false;
+  pendingMetaLeadImport = null;
+  document.querySelector("#commit-meta-leads").disabled = true;
+  document.querySelector("#meta-lead-authorized").checked = false;
+  if (!forms.length) {
+    list.innerHTML = "<legend>Authorized forms</legend><p class=\"platform-empty\">Meta returned no accessible Instant Forms. Create a lead form or grant Page lead access, then sync Meta again.</p>";
+    form.querySelector("button[type=submit]").disabled = true;
+    document.querySelector("#meta-lead-authorized").disabled = true;
+    return;
+  }
+  document.querySelector("#meta-lead-authorized").disabled = false;
+  form.querySelector("button[type=submit]").disabled = false;
+  list.innerHTML = `<legend>Authorized forms</legend>${forms.slice(0, 10).map((leadForm) => `
+    <label class="meta-form-option"><input type="checkbox" name="formIds" value="${escapeHtml(leadForm.id)}"><span><strong>${escapeHtml(leadForm.name)}</strong><small>${numberFormatter.format(leadForm.leadCount || 0)} known submissions · ${escapeHtml(leadForm.status || "status unavailable")}</small></span></label>
+  `).join("")}`;
 }
 
 function renderConnections(catalog) {
@@ -299,6 +330,7 @@ function renderConnections(catalog) {
     </article>
   `).join("");
   renderMetaPerformance(catalog);
+  renderMetaLeadImport(catalog);
   renderTikTokPerformance(catalog);
 }
 
@@ -563,6 +595,93 @@ document.querySelector("#social-experiment-form").addEventListener("submit", asy
   } finally {
     submitButton.disabled = false;
     submitButton.textContent = "Build reach plan ↗";
+  }
+});
+
+function metaLeadImportInput(form) {
+  const data = new FormData(form);
+  return {
+    formIds: data.getAll("formIds"),
+    consentChannels: data.getAll("consentChannels"),
+    confirmedAuthorized: document.querySelector("#meta-lead-authorized").checked,
+    confirmedConsent: document.querySelector("#meta-lead-authorized").checked,
+  };
+}
+
+function renderMetaLeadPreview(preview, { committed = false } = {}) {
+  const target = document.querySelector("#meta-lead-preview");
+  if (committed) {
+    target.className = "import-preview success";
+    target.innerHTML = `<strong>${numberFormatter.format(preview.accepted)} Meta leads committed</strong><span>${numberFormatter.format(preview.created)} new · ${numberFormatter.format(preview.updated)} updated · ${numberFormatter.format(preview.consentEventsAdded)} consent events added</span>`;
+    return;
+  }
+  const errors = preview.invalid.slice(0, 5).map((item) => `<li>Submission ${numberFormatter.format(item.row)}: ${escapeHtml(item.reason)}</li>`).join("");
+  target.className = `import-preview ${preview.summary.valid ? "ready" : "error"}`;
+  target.innerHTML = `
+    <div class="import-summary"><strong>${numberFormatter.format(preview.summary.valid)} ready</strong><span>${numberFormatter.format(preview.summary.invalid)} rejected · ${numberFormatter.format(preview.summary.duplicates)} duplicates</span></div>
+    ${errors ? `<ul>${errors}</ul>` : "<span>Contact fields were validated server-side and were not returned in this preview.</span>"}`;
+}
+
+document.querySelector("#meta-lead-import-form").addEventListener("change", () => {
+  pendingMetaLeadImport = null;
+  document.querySelector("#commit-meta-leads").disabled = true;
+});
+
+document.querySelector("#meta-lead-import-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector("button[type=submit]");
+  const input = metaLeadImportInput(form);
+  button.disabled = true;
+  button.textContent = "Fetching secure preview…";
+  pendingMetaLeadImport = null;
+  document.querySelector("#commit-meta-leads").disabled = true;
+  try {
+    if (!input.formIds.length) throw new Error("Select at least one Meta Instant Form");
+    if (!input.consentChannels.length) throw new Error("Choose at least one permitted contact channel");
+    if (!input.confirmedConsent) throw new Error("Confirm the selected forms' contact disclosure");
+    const response = await fetch("/api/v1/oauth/meta/leads/preview", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error?.message || "Could not preview Meta leads");
+    pendingMetaLeadImport = { input, preview: body.data };
+    renderMetaLeadPreview(body.data);
+    document.querySelector("#commit-meta-leads").disabled = body.data.summary.valid === 0;
+  } catch (error) {
+    const target = document.querySelector("#meta-lead-preview");
+    target.className = "import-preview error";
+    target.innerHTML = `<strong>Meta preview failed</strong><span>${escapeHtml(error.message)}</span>`;
+  } finally {
+    button.disabled = false;
+    button.textContent = "Preview Meta leads";
+  }
+});
+
+document.querySelector("#commit-meta-leads").addEventListener("click", async (event) => {
+  const button = event.currentTarget;
+  if (!pendingMetaLeadImport) return;
+  button.disabled = true;
+  button.textContent = "Committing Meta leads…";
+  try {
+    const response = await fetch("/api/v1/oauth/meta/leads/commit", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(pendingMetaLeadImport.input),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error?.message || "Could not commit Meta leads");
+    renderMetaLeadPreview(body.data, { committed: true });
+    pendingMetaLeadImport = null;
+    await loadDashboard();
+    showToast("Authorized Meta leads are now in your private workspace.");
+  } catch (error) {
+    showToast(error.message);
+    button.disabled = false;
+  } finally {
+    button.textContent = "Commit accepted leads ↗";
   }
 });
 
