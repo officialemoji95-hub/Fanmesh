@@ -33,7 +33,7 @@ async function dispatch({ method = "GET", url = "/", body = "", handler = handle
 test("health endpoint reports an operational service", async () => {
   const response = await dispatch({ url: "/api/health" });
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.8.0", database: "demo" });
+  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.9.0", database: "demo" });
 });
 
 test("public legal pages explain FanMesh data and platform rules", async () => {
@@ -147,6 +147,100 @@ test("campaign endpoint builds a release sequence", async () => {
   assert.equal(response.statusCode, 200);
   assert.equal(body.data.objective, "release");
   assert.ok(body.data.sequence.length >= 3);
+});
+
+test("activation preparation reports real eligibility without pretending to send", async () => {
+  const response = await dispatch({
+    method: "POST",
+    url: "/api/v1/activations/prepare",
+    body: JSON.stringify({
+      title: "New single",
+      contentUrl: "https://example.com/listen",
+      channels: ["email"],
+      confirmedOwnedContent: true,
+    }),
+  });
+  const body = response.json();
+  assert.equal(response.statusCode, 200);
+  assert.equal(body.meta.persisted, false);
+  assert.equal(body.data.kind, "fan_activation_v1");
+  assert.equal(body.data.audience.identifiedFans, 5);
+  assert.equal(body.data.delivery.email.status, "provider_connection_required");
+  assert.match(body.data.links.email, /utm_source=fanmesh/);
+});
+
+test("configured activation preparation uses workspace counts and persists only a draft", async () => {
+  let savedPlan;
+  const handler = createRequestHandler({
+    authService: {
+      config: { configured: true },
+      async session() {
+        return {
+          data: { authenticated: true, accessToken: "token", user: { id: "user-1" } },
+          cookies: ["session=refreshed"],
+        };
+      },
+    },
+    workspaceStore: {
+      async getActivationEligibility(user, token) {
+        assert.equal(user.id, "user-1");
+        assert.equal(token, "token");
+        return {
+          identifiedFans: 100,
+          directConnections: 25,
+          platformOnly: 75,
+          channels: { email: 20, sms: 8 },
+          platforms: { instagram: 90, facebook: 20, tiktok: 50, youtube: 4 },
+        };
+      },
+      async saveExperiment(user, token, plan) {
+        savedPlan = plan;
+        return { ...plan, databaseId: "activation-1", status: "saved" };
+      },
+    },
+    oauthService: { catalog() { return []; } },
+  });
+  const response = await dispatch({
+    method: "POST",
+    url: "/api/v1/activations/prepare",
+    handler,
+    body: JSON.stringify({
+      title: "New video",
+      contentUrl: "https://example.com/watch",
+      channels: ["email", "sms"],
+      holdoutPercent: 10,
+      confirmedOwnedContent: true,
+    }),
+  });
+  const body = response.json();
+  assert.equal(response.statusCode, 201);
+  assert.equal(body.meta.messagesSent, 0);
+  assert.equal(body.data.databaseId, "activation-1");
+  assert.equal(savedPlan.audience.selectedEligible, 25);
+  assert.equal(savedPlan.audience.reachableNow, 23);
+  assert.equal(savedPlan.delivery.sms.status, "provider_connection_required");
+});
+
+test("activation preparation rejects unsafe destinations", async () => {
+  const response = await dispatch({
+    method: "POST",
+    url: "/api/v1/activations/prepare",
+    body: JSON.stringify({
+      title: "Post",
+      contentUrl: "http://localhost/post",
+      channels: ["email"],
+      confirmedOwnedContent: true,
+    }),
+  });
+  assert.equal(response.statusCode, 400);
+  assert.match(response.json().error.message, /public HTTPS/);
+});
+
+test("recent activations are empty but explicit in demo mode", async () => {
+  const response = await dispatch({ url: "/api/v1/activations" });
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.json().data, []);
+  assert.equal(response.json().meta.persisted, false);
 });
 
 test("connections endpoint exposes authorized source contracts", async () => {

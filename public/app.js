@@ -16,6 +16,24 @@ function showToast(message) {
   toastTimer = setTimeout(() => toast.classList.remove("show"), 3000);
 }
 
+async function copyToClipboard(value) {
+  const text = String(value || "");
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const field = document.createElement("textarea");
+    field.value = text;
+    field.setAttribute("readonly", "");
+    field.style.position = "fixed";
+    field.style.opacity = "0";
+    document.body.append(field);
+    field.select();
+    document.execCommand("copy");
+    field.remove();
+  }
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -655,6 +673,12 @@ document.addEventListener("click", async (event) => {
   const disconnectButton = event.target.closest("[data-connection-disconnect]");
   if (disconnectButton) await runConnectionAction("disconnect", disconnectButton.dataset.connectionDisconnect, disconnectButton);
 
+  const copyButton = event.target.closest("[data-copy]");
+  if (copyButton) {
+    await copyToClipboard(copyButton.dataset.copy);
+    showToast(`${copyButton.dataset.copyLabel || "Link"} copied.`);
+  }
+
   if (event.target.closest(".mobile-menu")) document.querySelector(".sidebar").classList.toggle("open");
   if (event.target.closest(".nav a")) document.querySelector(".sidebar").classList.remove("open");
 });
@@ -666,34 +690,77 @@ document.querySelector("#fan-search").addEventListener("input", (event) => {
   ));
 });
 
+function renderFanActivation(plan) {
+  const result = document.querySelector("#campaign-result");
+  const readiness = plan.readiness === "audience_ready" ? "Audience ready" : "Capture needed";
+  const links = Object.entries(plan.links || {});
+  const delivery = Object.entries(plan.delivery || {});
+  result.className = "activation-result";
+  result.innerHTML = `
+    <div class="activation-heading">
+      <div><p class="eyebrow">${escapeHtml(plan.id)}</p><h3>${escapeHtml(plan.title)}</h3></div>
+      <span class="status ${plan.readiness === "audience_ready" ? "good" : "warning"}">${escapeHtml(readiness)}</span>
+    </div>
+    <div class="reach-summary">
+      <span><small>Known fans</small><strong>${numberFormatter.format(plan.audience.identifiedFans)}</strong></span>
+      <span><small>Platform only</small><strong>${numberFormatter.format(plan.audience.platformOnly)}</strong></span>
+      <span><small>Direct eligible</small><strong>${numberFormatter.format(plan.audience.selectedEligible)}</strong></span>
+      <span><small>Alert cohort</small><strong>${numberFormatter.format(plan.audience.reachableNow)}</strong></span>
+    </div>
+    <p class="activation-note">${escapeHtml(plan.audience.explanation)} ${numberFormatter.format(plan.audience.holdout)} fan${plan.audience.holdout === 1 ? "" : "s"} reserved for measurement.</p>
+    <div class="activation-links">
+      ${links.map(([channel, link]) => `
+        <div class="activation-link">
+          <span>${escapeHtml(channel)}</span>
+          <input value="${escapeHtml(link)}" readonly aria-label="${escapeHtml(channel)} attribution link">
+          <button type="button" data-copy="${escapeHtml(link)}" data-copy-label="${escapeHtml(channel)} link">Copy link</button>
+        </div>
+      `).join("")}
+    </div>
+    <div class="delivery-readiness">
+      ${delivery.map(([channel, details]) => `
+        <article><strong>${escapeHtml(channel)} · ${numberFormatter.format(details.eligible)} eligible</strong><p>${escapeHtml(details.explanation)}</p></article>
+      `).join("")}
+    </div>
+    <div class="activation-steps">
+      ${plan.steps.map((step) => `
+        <div class="activation-step"><b>0${escapeHtml(step.order)}</b><strong>${escapeHtml(step.title)}</strong><p>${escapeHtml(step.detail)}</p></div>
+      `).join("")}
+    </div>
+    <p class="guardrail"><strong>Delivery truth:</strong> This activation is saved, but no email or SMS has been sent. Connect a permitted provider before launch.</p>`;
+}
+
 document.querySelector("#campaign-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const submitButton = event.currentTarget.querySelector("button[type=submit]");
-  const input = Object.fromEntries(new FormData(event.currentTarget));
+  const formData = new FormData(event.currentTarget);
+  const input = {
+    title: formData.get("title"),
+    contentUrl: formData.get("contentUrl"),
+    objective: formData.get("objective"),
+    message: formData.get("message"),
+    channels: formData.getAll("channels"),
+    holdoutPercent: formData.get("holdoutPercent"),
+    confirmedOwnedContent: formData.get("confirmedOwnedContent") === "on",
+  };
   submitButton.disabled = true;
-  submitButton.textContent = "Building sequence…";
+  submitButton.textContent = "Calculating real reach…";
 
   try {
-    const response = await fetch("/api/v1/campaigns/recommend", {
+    const response = await fetch("/api/v1/activations/prepare", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(input),
     });
-    if (!response.ok) throw new Error("Could not build the campaign sequence");
-    const { data } = await response.json();
-    document.querySelector("#campaign-result").className = "sequence-result";
-    document.querySelector("#campaign-result").innerHTML = `
-      <h3>${escapeHtml(data.contentType)} activation</h3>
-      <p class="sequence-meta">Start with: <strong>${escapeHtml(data.primarySegment)}</strong></p>
-      <div class="sequence">${data.sequence.map((step) => `
-        <div class="sequence-step"><b>${escapeHtml(step.offset)}</b><span>${escapeHtml(step.channel)}</span><p>${escapeHtml(step.action)}</p></div>
-      `).join("")}</div>
-      <p class="guardrail"><strong>Guardrail:</strong> ${escapeHtml(data.guardrail)}</p>`;
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error?.message || "Could not prepare the fan alert");
+    renderFanActivation(body.data);
+    showToast(body.meta?.persisted ? "Fan alert saved to your workspace." : "Demo fan alert prepared.");
   } catch (error) {
     showToast(error.message);
   } finally {
     submitButton.disabled = false;
-    submitButton.textContent = "Generate activation plan ↗";
+    submitButton.textContent = "Prepare fan alert ↗";
   }
 });
 

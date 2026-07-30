@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="FanMesh unifies consented fan relationships and turns them into useful audience intelligence.">
     <title>FanMesh — Own the relationship</title>
-    <link rel="stylesheet" href="/styles.css?v=0.8.0">
+    <link rel="stylesheet" href="/styles.css?v=0.9.0">
   </head>
   <body>
     <section class="auth-gate" id="auth-gate" aria-labelledby="auth-title" hidden>
@@ -313,21 +313,30 @@
         <section class="campaign-grid" id="campaign">
           <article class="panel campaign-builder">
             <div class="panel-heading">
-              <div><p class="eyebrow">Activation planner</p><h2>Turn attention into momentum</h2></div>
-              <span class="status good">Compliant by design</span>
+              <div><p class="eyebrow">Fan alert</p><h2>Help real fans find this post</h2></div>
+              <span class="status good">Explainable reach</span>
             </div>
-            <p class="panel-copy">Build a sequence for the fans most likely to care—across channels where they have chosen to hear from you.</p>
+            <p class="panel-copy">Prepare an attribution link and see exactly how many fans are directly alertable. FanMesh saves the campaign but sends nothing until a permitted delivery provider is connected.</p>
             <form id="campaign-form">
-              <label>Goal<select name="objective"><option value="release">Release music or content</option><option value="sales">Drive sales</option><option value="community">Grow community</option></select></label>
-              <label>What are you sharing?<input name="contentType" value="new single" maxlength="80"></label>
-              <button class="button primary" type="submit">Generate activation plan ↗</button>
+              <label>Post or release title<input name="title" placeholder="New video, single, product, or announcement" minlength="2" maxlength="100" required></label>
+              <label>Public post or destination URL<input name="contentUrl" type="url" placeholder="https://…" maxlength="1500" required></label>
+              <label>Goal<select name="objective"><option value="release">Release music or content</option><option value="evergreen">Keep a post moving</option><option value="sales">Drive sales</option><option value="community">Grow community</option></select></label>
+              <label>Alert message<textarea name="message" maxlength="280" placeholder="Tell opted-in fans why this is worth their attention."></textarea></label>
+              <fieldset>
+                <legend>Direct alert channels</legend>
+                <label class="check"><input type="checkbox" name="channels" value="email" checked> Email</label>
+                <label class="check"><input type="checkbox" name="channels" value="sms"> SMS</label>
+              </fieldset>
+              <label>Measurement holdout<select name="holdoutPercent"><option value="0">No holdout yet</option><option value="5">5% holdout</option><option value="10">10% holdout</option></select></label>
+              <label class="activation-confirm"><input name="confirmedOwnedContent" type="checkbox" required> I control this content or destination.</label>
+              <button class="button primary" type="submit">Prepare fan alert ↗</button>
             </form>
           </article>
           <article class="panel sequence-panel" aria-live="polite">
             <div class="empty-sequence" id="campaign-result">
               <span class="sequence-icon">↗</span>
-              <h3>Your activation sequence will appear here</h3>
-              <p>Choose a goal and FanMesh will recommend an audience, channels, timing, and guardrail.</p>
+              <h3>Your reach report will appear here</h3>
+              <p>Add the live post link. FanMesh will separate known platform followers from fans you can alert directly.</p>
             </div>
           </article>
         </section>
@@ -344,6 +353,6 @@
       </main>
     </div>
     <div class="toast" role="status" aria-live="polite"></div>
-    <script src="/app.js?v=0.8.0" type="module"></script>
+    <script src="/app.js?v=0.9.0" type="module"></script>
   </body>
 </html>

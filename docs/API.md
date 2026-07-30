@@ -1,4 +1,4 @@
-# FanMesh API v0.7
+# FanMesh API v0.9
 
 The prototype serves JSON under `/api`. Responses use `{ "data": ... }` for successful resources and `{ "error": { "message": ... } }` for errors. When Supabase is configured, workspace endpoints require the secure creator session cookie and PostgreSQL row-level security isolates every workspace. When Supabase is unconfigured, dashboard reads use clearly labeled demo data.
 
@@ -56,6 +56,14 @@ The response includes the total score, tier, component points, strongest signals
 ### `POST /api/v1/campaigns/recommend`
 
 Accepts an `objective` (`release`, `sales`, or `community`) and a `contentType`. Returns a segment, timed channel sequence, and compliance guardrail.
+
+### `POST /api/v1/activations/prepare`
+
+Requires a creator session in account mode. Accepts a creator-controlled public HTTPS `contentUrl`, a title, objective, alert message, selected `email`/`sms` channels, an optional measurement holdout, and `confirmedOwnedContent: true`. FanMesh calculates exact workspace eligibility, separates platform-only identities from directly alertable fans, creates channel-specific UTM attribution links, and saves the draft in `social_experiments`. The response explicitly reports that zero messages were sent.
+
+### `GET /api/v1/activations?limit=5`
+
+Returns recent saved `fan_activation_v1` drafts for the signed-in workspace. Contact details are not included.
 
 ### `POST /api/v1/imports/leads/preview`
 

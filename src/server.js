@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
+import { activationEligibilityFromFans, prepareFanActivation } from "./activation.js";
 import { AuthError, createAuthService } from "./auth.js";
 import { createWorkspaceStore, DatabaseError } from "./database.js";
 import { audienceSnapshot, demoFans } from "./demo-data.js";
@@ -11,7 +12,7 @@ import { openApiDocument } from "./openapi.js";
 import { getConnectionCatalog, planSocialExperiment, previewLeadImport, previewPlatformIdentityImport } from "./social.js";
 import { scoreAudience, scoreFan } from "./scoring.js";
 
-const APP_VERSION = "0.8.0";
+const APP_VERSION = "0.9.0";
 const port = Number(process.env.PORT || 3000);
 const publicDirectory = fileURLToPath(new URL("../public", import.meta.url));
 const maxBodyBytes = 2 * 1024 * 1024;
@@ -357,6 +358,46 @@ export function createRequestHandler({
     if (request.method === "POST" && pathname === "/api/v1/score") {
       try {
         return sendJson(response, 200, { data: scoreFan(await readJson(request)) });
+      } catch (error) {
+        return sendError(response, error);
+      }
+    }
+
+    if (request.method === "GET" && pathname === "/api/v1/activations") {
+      try {
+        if (!authService.config.configured) {
+          return sendJson(response, 200, { data: [], meta: { demo: true, persisted: false } });
+        }
+        const session = await authenticatedSession(request);
+        const limit = Math.min(20, Math.max(1, Number(searchParams.get("limit")) || 5));
+        const activations = await workspaceStore.listActivations(session.data.user, session.data.accessToken, limit);
+        return sendJson(response, 200, {
+          data: activations,
+          meta: { demo: false, persisted: true },
+        }, cookieHeaders(session.cookies));
+      } catch (error) {
+        return sendError(response, error);
+      }
+    }
+
+    if (request.method === "POST" && pathname === "/api/v1/activations/prepare") {
+      try {
+        const input = await readJson(request);
+        if (!authService.config.configured) {
+          const plan = prepareFanActivation(input, activationEligibilityFromFans(demoFans));
+          return sendJson(response, 200, { data: plan, meta: { demo: true, persisted: false } });
+        }
+        const session = await authenticatedSession(request);
+        const eligibility = await workspaceStore.getActivationEligibility(
+          session.data.user,
+          session.data.accessToken,
+        );
+        const plan = prepareFanActivation(input, eligibility);
+        const saved = await workspaceStore.saveExperiment(session.data.user, session.data.accessToken, plan);
+        return sendJson(response, 201, {
+          data: saved,
+          meta: { demo: false, persisted: true, messagesSent: 0 },
+        }, cookieHeaders(session.cookies));
       } catch (error) {
         return sendError(response, error);
       }

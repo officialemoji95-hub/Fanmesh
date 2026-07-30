@@ -306,6 +306,39 @@ export function createWorkspaceStore({ environment = process.env, fetchImpl = gl
     };
   }
 
+  async function getActivationEligibility(user, token) {
+    const workspace = await workspaceFor(user, token);
+    const workspaceId = queryValue(workspace.id);
+    const fanCountPath = `/rest/v1/fans?select=id&workspace_id=eq.${workspaceId}`;
+    const [
+      identifiedFans,
+      directConnections,
+      email,
+      sms,
+      instagram,
+      facebook,
+      tiktok,
+      youtube,
+    ] = await Promise.all([
+      countRows(fanCountPath, token),
+      countRows(`${fanCountPath}&consented_channels=not.eq.%7B%7D`, token),
+      countRows(`${fanCountPath}&consented_channels=cs.%7Bemail%7D`, token),
+      countRows(`${fanCountPath}&consented_channels=cs.%7Bsms%7D`, token),
+      countRows(`${fanCountPath}&channels=cs.%7Binstagram%7D`, token),
+      countRows(`${fanCountPath}&channels=cs.%7Bfacebook%7D`, token),
+      countRows(`${fanCountPath}&channels=cs.%7Btiktok%7D`, token),
+      countRows(`${fanCountPath}&channels=cs.%7Byoutube%7D`, token),
+    ]);
+    return {
+      workspace,
+      identifiedFans,
+      directConnections,
+      platformOnly: Math.max(0, identifiedFans - directConnections),
+      channels: { email, sms },
+      platforms: { instagram, facebook, tiktok, youtube },
+    };
+  }
+
   async function saveExperiment(user, token, plan) {
     const workspace = await workspaceFor(user, token);
     const rows = await request("/rest/v1/social_experiments", token, {
@@ -322,6 +355,23 @@ export function createWorkspaceStore({ environment = process.env, fetchImpl = gl
       }],
     });
     return { ...plan, databaseId: rows?.[0]?.id, status: "saved" };
+  }
+
+  async function listActivations(user, token, limit = 10) {
+    const workspace = await workspaceFor(user, token);
+    const rows = await request(
+      `/rest/v1/social_experiments?select=id,status,plan,created_at&workspace_id=eq.${queryValue(workspace.id)}&order=created_at.desc&limit=${Math.min(50, Math.max(1, limit * 3))}`,
+      token,
+    );
+    return (rows || [])
+      .filter((row) => row.plan?.kind === "fan_activation_v1")
+      .slice(0, limit)
+      .map((row) => ({
+        ...row.plan,
+        databaseId: row.id,
+        status: row.status,
+        createdAt: row.created_at || row.plan.createdAt,
+      }));
   }
 
   function chunks(values, size = 75) {
@@ -671,8 +721,10 @@ export function createWorkspaceStore({ environment = process.env, fetchImpl = gl
     commitLeadImport,
     commitPlatformIdentityImport,
     config,
+    getActivationEligibility,
     getDashboard,
     getSourceConnection,
+    listActivations,
     saveExperiment,
     saveSourceConnection,
     workspaceFor,
