@@ -107,6 +107,52 @@ test("audience commits upsert fans and record consent provenance", async () => {
   assert.equal(fan.source_provenance.latest.consentSource, "meta-lead-form");
 });
 
+test("platform identity commits never invent direct-contact consent", async () => {
+  const calls = [];
+  function response(payload, status = 200) {
+    return { ok: status >= 200 && status < 300, status, async text() { return payload === null ? "" : JSON.stringify(payload); } };
+  }
+  const store = createWorkspaceStore({
+    environment: { SUPABASE_URL: "https://project.supabase.co", SUPABASE_PUBLISHABLE_KEY: "public-key" },
+    async fetchImpl(url, options = {}) {
+      calls.push({ url, options });
+      if (url.includes("workspace_members")) return response([{ workspace_id: "workspace-1", role: "owner" }]);
+      if (url.includes("/workspaces?")) return response([{ id: "workspace-1", name: "Creator workspace", slug: "creator" }]);
+      if (url.endsWith("/rest/v1/import_runs") && options.method === "POST") return response([{ id: "run-identity-1" }], 201);
+      if (url.includes("/fans?select=")) return response([]);
+      if (url.includes("/fans?on_conflict=")) {
+        const body = JSON.parse(options.body);
+        return response(body.map((row) => ({ id: "fan-platform-1", contact_key: row.contact_key })), 201);
+      }
+      if (url.includes("/import_runs?id=eq.run-identity-1") && options.method === "PATCH") return response(null, 204);
+      throw new Error(`Unexpected request: ${options.method || "GET"} ${url}`);
+    },
+  });
+  const saved = await store.commitPlatformIdentityImport({ id: "user-1" }, "user-token", {
+    source: "instagram_export",
+    platform: "instagram",
+    valid: [{
+      contactKey: "platform_contact-key",
+      sourceKey: "source-key",
+      source: "instagram_export",
+      platform: "instagram",
+      handle: "fan.one",
+      name: "Fan One",
+      relationship: "follower",
+    }],
+    summary: { received: 1, valid: 1, invalid: 0 },
+  }, { refreshSnapshot: false });
+  assert.equal(saved.created, 1);
+  assert.equal(saved.consentEventsAdded, 0);
+  assert.equal(saved.directlyReachable, 0);
+  const fanCall = calls.find((call) => call.url.includes("/fans?on_conflict="));
+  const fan = JSON.parse(fanCall.options.body)[0];
+  assert.deepEqual(fan.channels, ["instagram"]);
+  assert.deepEqual(fan.consented_channels, []);
+  assert.equal(fan.source_provenance.latest.directContactConsent, false);
+  assert.equal(calls.some((call) => call.url.includes("/consents")), false);
+});
+
 test("OAuth connections persist encrypted metadata and refresh aggregate audience totals", async () => {
   const calls = [];
   function response(payload, status = 200) {
@@ -125,7 +171,7 @@ test("OAuth connections persist encrypted metadata and refresh aggregate audienc
       if (url.includes("source_connections?select=platform,status,metadata")) {
         return response([{ platform: "tiktok", status: "connected", metadata: { metrics: { totalFollowers: 118000 } } }]);
       }
-      if (url.includes("/fans?select=id,consented_channels")) return response([]);
+      if (url.includes("/fans?select=id")) return response([]);
       if (url.endsWith("/rest/v1/audience_snapshots") && options.method === "POST") return response(null, 201);
       throw new Error(`Unexpected request: ${options.method || "GET"} ${url}`);
     },
