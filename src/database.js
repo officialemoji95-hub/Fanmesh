@@ -231,6 +231,36 @@ export function createWorkspaceStore({ environment = process.env, fetchImpl = gl
     return payload;
   }
 
+  async function countRows(path, token) {
+    if (!config.configured) throw new DatabaseError("Supabase is not configured", 503);
+    let response;
+    try {
+      response = await fetchImpl(`${config.url}${path}`, {
+        method: "HEAD",
+        signal: AbortSignal.timeout(12000),
+        headers: {
+          apikey: config.key,
+          authorization: `Bearer ${token}`,
+          prefer: "count=exact",
+          range: "0-0",
+        },
+      });
+    } catch {
+      throw new DatabaseError("Audience database is temporarily unavailable", 502);
+    }
+    if (!response.ok) throw new DatabaseError("Audience database count failed", response.status === 401 || response.status === 403 ? response.status : 502);
+    const contentRange = response.headers?.get?.("content-range") || "";
+    const exact = Number(contentRange.split("/")[1]);
+    if (Number.isFinite(exact)) return exact;
+    const fallbackText = await response.text();
+    try {
+      const fallback = fallbackText ? JSON.parse(fallbackText) : [];
+      return Array.isArray(fallback) ? fallback.length : 0;
+    } catch {
+      return 0;
+    }
+  }
+
   async function workspaceFor(user, token) {
     const memberships = await request(
       `/rest/v1/workspace_members?select=workspace_id,role&user_id=eq.${queryValue(user.id)}&limit=1`,
@@ -379,6 +409,47 @@ export function createWorkspaceStore({ environment = process.env, fetchImpl = gl
     };
   }
 
+  function platformIdentityFanRow(workspaceId, identity, existing, importedAt) {
+    const provenanceEntry = {
+      source: identity.source,
+      sourceKey: identity.sourceKey,
+      platform: identity.platform,
+      externalId: identity.externalId || null,
+      handle: identity.handle || null,
+      profileUrl: identity.profileUrl || null,
+      relationship: identity.relationship,
+      observedAt: identity.observedAt || null,
+      importedAt,
+      directContactConsent: false,
+    };
+    const priorSources = Array.isArray(existing?.source_provenance?.sources)
+      ? existing.source_provenance.sources
+      : [];
+    const sources = [...priorSources.filter((item) => item?.sourceKey !== identity.sourceKey), provenanceEntry].slice(-25);
+    return {
+      workspace_id: workspaceId,
+      contact_key: identity.contactKey,
+      display_name: identity.name || identity.handle || existing?.display_name || `${identity.platform} fan`,
+      email: existing?.email || null,
+      phone: existing?.phone || null,
+      location: existing?.location || null,
+      channels: unique([...(existing?.channels || []), identity.platform]),
+      consented_channels: unique(existing?.consented_channels || []),
+      metrics: {
+        ...(existing?.metrics || {}),
+        directOptIn: Boolean(existing?.metrics?.directOptIn),
+        platformIdentity: true,
+        platformHandle: identity.handle || existing?.metrics?.platformHandle || null,
+        relationship: identity.relationship,
+        latestImportSource: identity.source,
+        latestImportAt: importedAt,
+      },
+      source_provenance: { version: 1, sources, latest: provenanceEntry },
+      last_seen: latestTimestamp(existing?.last_seen, identity.observedAt || importedAt),
+      updated_at: importedAt,
+    };
+  }
+
   async function commitLeadImport(user, token, preview) {
     const workspace = await workspaceFor(user, token);
     const importedAt = new Date().toISOString();
@@ -461,6 +532,73 @@ export function createWorkspaceStore({ environment = process.env, fetchImpl = gl
     }
   }
 
+  async function commitPlatformIdentityImport(user, token, preview, { refreshSnapshot = true } = {}) {
+    const workspace = await workspaceFor(user, token);
+    const importedAt = new Date().toISOString();
+    const source = preview.source;
+    const runRows = await request("/rest/v1/import_runs", token, {
+      method: "POST",
+      prefer: "return=representation",
+      body: [{
+        workspace_id: workspace.id,
+        created_by: user.id,
+        source,
+        received_count: preview.summary.received,
+        accepted_count: 0,
+        rejected_count: preview.summary.invalid,
+        status: "processing",
+      }],
+    });
+    const importRunId = runRows?.[0]?.id;
+    if (!importRunId) throw new DatabaseError("Platform identity import could not be started", 502);
+
+    try {
+      const previous = await existingFans(workspace.id, token, preview.valid.map((identity) => identity.contactKey));
+      const rows = preview.valid.map((identity) => platformIdentityFanRow(
+        workspace.id,
+        identity,
+        previous.get(identity.contactKey),
+        importedAt,
+      ));
+      const savedFans = rows.length ? await request(
+        "/rest/v1/fans?on_conflict=workspace_id,contact_key&select=id,contact_key",
+        token,
+        { method: "POST", prefer: "resolution=merge-duplicates,return=representation", body: rows },
+      ) : [];
+      if ((savedFans || []).length !== rows.length) throw new DatabaseError("Some platform identities could not be confirmed", 502);
+      await request(`/rest/v1/import_runs?id=eq.${queryValue(importRunId)}`, token, {
+        method: "PATCH",
+        prefer: "return=minimal",
+        body: { accepted_count: rows.length, status: "completed" },
+      });
+      if (refreshSnapshot) await refreshAudienceSnapshot(workspace, token);
+      return {
+        id: importRunId,
+        source,
+        platform: preview.platform,
+        received: preview.summary.received,
+        accepted: rows.length,
+        rejected: preview.summary.invalid,
+        created: rows.filter((row) => !previous.has(row.contact_key)).length,
+        updated: rows.filter((row) => previous.has(row.contact_key)).length,
+        consentEventsAdded: 0,
+        directlyReachable: 0,
+        status: "completed",
+      };
+    } catch (error) {
+      try {
+        await request(`/rest/v1/import_runs?id=eq.${queryValue(importRunId)}`, token, {
+          method: "PATCH",
+          prefer: "return=minimal",
+          body: { status: "failed" },
+        });
+      } catch {
+        // Preserve the original import failure.
+      }
+      throw error;
+    }
+  }
+
   async function getSourceConnection(user, token, platform) {
     const workspace = await workspaceFor(user, token);
     const rows = await request(
@@ -472,9 +610,10 @@ export function createWorkspaceStore({ environment = process.env, fetchImpl = gl
 
   async function refreshAudienceSnapshot(workspace, token) {
     const workspaceId = queryValue(workspace.id);
-    const [connections, fanRows] = await Promise.all([
+    const [connections, identifiedFans, directConnections] = await Promise.all([
       request(`/rest/v1/source_connections?select=platform,status,metadata&workspace_id=eq.${workspaceId}`, token),
-      request(`/rest/v1/fans?select=id,consented_channels&workspace_id=eq.${workspaceId}`, token),
+      countRows(`/rest/v1/fans?select=id&workspace_id=eq.${workspaceId}`, token),
+      countRows(`/rest/v1/fans?select=id&workspace_id=eq.${workspaceId}&consented_channels=not.eq.%7B%7D`, token),
     ]);
     const connected = (connections || []).filter((row) => row.status === "connected");
     const totalFollowers = connected.reduce((sum, row) => sum + Math.max(0, Number(row.metadata?.metrics?.totalFollowers) || 0), 0);
@@ -484,7 +623,6 @@ export function createWorkspaceStore({ environment = process.env, fetchImpl = gl
     const averageViews = averageViewsValues.length
       ? Math.round(averageViewsValues.reduce((sum, value) => sum + value, 0) / averageViewsValues.length)
       : 0;
-    const fans = fanRows || [];
     await request("/rest/v1/audience_snapshots", token, {
       method: "POST",
       prefer: "return=minimal",
@@ -492,8 +630,8 @@ export function createWorkspaceStore({ environment = process.env, fetchImpl = gl
         workspace_id: workspace.id,
         total_followers: totalFollowers,
         average_views: averageViews,
-        identified_fans: fans.length,
-        direct_connections: fans.filter((fan) => Array.isArray(fan.consented_channels) && fan.consented_channels.length).length,
+        identified_fans: identifiedFans,
+        direct_connections: directConnections,
         connected_platforms: connected.length,
       }],
     });
@@ -531,6 +669,7 @@ export function createWorkspaceStore({ environment = process.env, fetchImpl = gl
 
   return Object.freeze({
     commitLeadImport,
+    commitPlatformIdentityImport,
     config,
     getDashboard,
     getSourceConnection,

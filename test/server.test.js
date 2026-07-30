@@ -33,7 +33,7 @@ async function dispatch({ method = "GET", url = "/", body = "", handler = handle
 test("health endpoint reports an operational service", async () => {
   const response = await dispatch({ url: "/api/health" });
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.7.0", database: "demo" });
+  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.8.0", database: "demo" });
 });
 
 test("public legal pages explain FanMesh data and platform rules", async () => {
@@ -349,6 +349,84 @@ test("authorized lead commits are revalidated and persisted through the workspac
   assert.equal(response.statusCode, 201);
   assert.equal(response.json().meta.persisted, true);
   assert.equal(persistedPreview.summary.valid, 1);
+});
+
+test("official platform export preview returns identity counts without granting contact consent", async () => {
+  const response = await dispatch({
+    method: "POST",
+    url: "/api/v1/imports/identities/preview",
+    body: JSON.stringify({
+      source: "instagram_export",
+      relationship: "follower",
+      rows: [{ username: "fan.one", profileUrl: "https://www.instagram.com/fan.one/" }],
+    }),
+  });
+  const body = response.json();
+  assert.equal(response.statusCode, 200);
+  assert.equal(body.data.summary.valid, 1);
+  assert.equal(body.data.summary.directlyReachable, 0);
+  assert.equal(body.meta.directContactConsentGranted, false);
+  assert.equal("valid" in body.data, false);
+});
+
+test("platform identity commit requires official-export confirmation", async () => {
+  const handler = createRequestHandler({
+    authService: {
+      config: { configured: true },
+      async session() {
+        return { data: { authenticated: true, accessToken: "token", user: { id: "user-1" } }, cookies: [] };
+      },
+    },
+    workspaceStore: { async commitPlatformIdentityImport() { throw new Error("should not be called"); } },
+  });
+  const response = await dispatch({
+    method: "POST",
+    url: "/api/v1/imports/identities/commit",
+    body: JSON.stringify({ source: "instagram_export", relationship: "follower", confirmedAuthorized: true, rows: [{ username: "fan.one" }] }),
+    handler,
+  });
+  assert.equal(response.statusCode, 400);
+  assert.match(response.json().error.message, /official platform data export/);
+});
+
+test("confirmed platform identity commits remain platform-only", async () => {
+  let persistedPreview;
+  let options;
+  const handler = createRequestHandler({
+    authService: {
+      config: { configured: true },
+      async session() {
+        return { data: { authenticated: true, accessToken: "token", user: { id: "user-1" } }, cookies: [] };
+      },
+    },
+    workspaceStore: {
+      async commitPlatformIdentityImport(user, token, preview, commitOptions) {
+        assert.equal(user.id, "user-1");
+        assert.equal(token, "token");
+        persistedPreview = preview;
+        options = commitOptions;
+        return { id: "run-platform-1", accepted: 1, created: 1, updated: 0, consentEventsAdded: 0, directlyReachable: 0 };
+      },
+    },
+  });
+  const response = await dispatch({
+    method: "POST",
+    url: "/api/v1/imports/identities/commit",
+    body: JSON.stringify({
+      source: "tiktok_export",
+      relationship: "follower",
+      rows: [{ username: "fan.one", profileUrl: "https://www.tiktok.com/@fan.one" }],
+      confirmedAuthorized: true,
+      confirmedOfficialExport: true,
+      finalBatch: false,
+    }),
+    handler,
+  });
+  assert.equal(response.statusCode, 201);
+  assert.equal(persistedPreview.valid[0].platform, "tiktok");
+  assert.equal("consent" in persistedPreview.valid[0], false);
+  assert.equal(options.refreshSnapshot, false);
+  assert.equal(response.json().meta.directContactConsentGranted, false);
 });
 
 test("social experiment endpoint returns a measured distribution plan", async () => {

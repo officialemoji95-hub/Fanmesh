@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="FanMesh unifies consented fan relationships and turns them into useful audience intelligence.">
     <title>FanMesh — Own the relationship</title>
-    <link rel="stylesheet" href="/styles.css?v=0.7.0">
+    <link rel="stylesheet" href="/styles.css?v=0.8.0">
   </head>
   <body>
     <section class="auth-gate" id="auth-gate" aria-labelledby="auth-title" hidden>
@@ -134,11 +134,48 @@
           </section>
           <section class="tiktok-performance" id="tiktok-performance" aria-live="polite" hidden></section>
           <p class="connection-setup-note">Developer apps must be configured before a Connect button activates. Platform review determines which profile, publishing, advertising and lead permissions are available.</p>
+          <section class="import-workbench identity-import-workbench" aria-labelledby="identity-import-title">
+            <div class="import-intro">
+              <p class="eyebrow">Official data download</p>
+              <h3 id="identity-import-title">Mesh followers without Meta business verification</h3>
+              <p>Unzip the data download from Facebook, Instagram, TikTok, or YouTube, then select the follower JSON or CSV files. FanMesh reads them locally, imports large audiences in safe batches, and keeps every identity platform-only.</p>
+              <ul>
+                <li>Select follower, friend, or subscriber files—not messages, passwords, cookies, or a whole ZIP.</li>
+                <li>Usernames and profile links become identity signals, not email/SMS or automated-DM permission.</li>
+                <li>Repeat downloads update matching identities instead of creating copies.</li>
+              </ul>
+            </div>
+            <form id="identity-import-form">
+              <div class="import-fields identity-import-fields">
+                <label>Platform export<select name="source" required>
+                  <option value="instagram_export">Instagram download</option>
+                  <option value="facebook_export">Facebook download</option>
+                  <option value="tiktok_export">TikTok download</option>
+                  <option value="youtube_export">YouTube/Takeout download</option>
+                </select></label>
+                <label>Relationship<select name="relationship" required>
+                  <option value="follower">Followers</option>
+                  <option value="friend">Facebook friends</option>
+                  <option value="subscriber">YouTube subscribers</option>
+                  <option value="commenter">Commenters</option>
+                  <option value="liker">People who liked</option>
+                </select></label>
+                <label>JSON or CSV files<input name="files" type="file" accept=".json,.csv,application/json,text/csv" multiple required></label>
+              </div>
+              <button class="button secondary" type="submit">Preview official export</button>
+              <article class="import-preview" id="identity-import-preview" aria-live="polite">
+                <strong>No platform download previewed</strong>
+                <span>For Instagram, start with files such as followers_1.json after unzipping the download.</span>
+              </article>
+              <label class="authorization-check"><input id="identity-import-authorized" type="checkbox" disabled> I confirm these files came from the official download tool for an account I control.</label>
+              <button class="button primary" id="commit-identity-import" type="button" disabled>Commit platform identities ↗</button>
+            </form>
+          </section>
           <section class="import-workbench" aria-labelledby="import-title">
             <div class="import-intro">
-              <p class="eyebrow">Authorized audience import</p>
-              <h3 id="import-title">Bring your ad leads into one private mesh</h3>
-              <p>Upload an official export or your own first-party CSV. FanMesh previews and deduplicates it before anything is saved.</p>
+              <p class="eyebrow">Direct-contact lead import</p>
+              <h3 id="import-title">Bring consented ad leads into the mesh</h3>
+              <p>Upload an official lead export or your own first-party CSV. FanMesh previews contact permission and deduplicates it before anything is saved.</p>
               <a class="text-link" href="/fanmesh-import-template.csv" download>Download CSV template ↓</a>
               <ul>
                 <li>Requires an email or phone plus explicit consent provenance.</li>
@@ -150,11 +187,8 @@
               <div class="import-fields">
                 <label>Data source<select name="source" required>
                   <option value="meta_ads">Meta Ads leads</option>
-                  <option value="facebook_export">Facebook official export</option>
-                  <option value="instagram_export">Instagram official export</option>
                   <option value="tiktok_ads">TikTok Ads leads</option>
                   <option value="google_ads">Google Ads leads</option>
-                  <option value="youtube_export">YouTube official export</option>
                   <option value="csv">First-party consent CSV</option>
                 </select></label>
                 <label>CSV file<input name="file" type="file" accept=".csv,text/csv" required></label>
@@ -310,6 +344,6 @@
       </main>
     </div>
     <div class="toast" role="status" aria-live="polite"></div>
-    <script src="/app.js?v=0.7.0" type="module"></script>
+    <script src="/app.js?v=0.8.0" type="module"></script>
   </body>
 </html>

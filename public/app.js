@@ -7,6 +7,7 @@ let authState = { configured: false, authenticated: false, mode: "demo" };
 let authMode = "signin";
 let pendingImport = null;
 let pendingMetaLeadImport = null;
+let pendingIdentityImport = null;
 
 function showToast(message) {
   clearTimeout(toastTimer);
@@ -54,6 +55,27 @@ const importHeaderAliases = Object.freeze({
   utmcampaign: "utmCampaign",
 });
 
+const identityHeaderAliases = Object.freeze({
+  username: "username",
+  user: "username",
+  handle: "username",
+  screenname: "username",
+  name: "name",
+  fullname: "name",
+  displayname: "name",
+  profileurl: "profileUrl",
+  profilelink: "profileUrl",
+  url: "profileUrl",
+  href: "profileUrl",
+  id: "externalId",
+  userid: "externalId",
+  externalid: "externalId",
+  timestamp: "timestamp",
+  date: "timestamp",
+  followedat: "timestamp",
+  createdat: "timestamp",
+});
+
 function parseCsv(text) {
   const rows = [];
   let row = [];
@@ -96,6 +118,117 @@ function recordsFromCsv(text) {
   const headers = table[0].map((header) => importHeaderAliases[header.toLowerCase().replace(/[^a-z0-9]+/g, "")] || "");
   if (!headers.includes("email") && !headers.includes("phone")) throw new Error("Add an email or phone column");
   return table.slice(1).map((values) => Object.fromEntries(headers.flatMap((header, index) => header ? [[header, values[index]?.trim() || ""]] : [])));
+}
+
+function normalizedObjectValue(record, aliases) {
+  if (!record || typeof record !== "object" || Array.isArray(record)) return "";
+  const normalized = Object.fromEntries(Object.entries(record).map(([key, value]) => [key.toLowerCase().replace(/[^a-z0-9]+/g, ""), value]));
+  for (const alias of aliases) {
+    const value = normalized[alias];
+    if (value !== undefined && value !== null && String(value).trim()) return value;
+  }
+  return "";
+}
+
+function collectOfficialIdentityRows(value, relationship, rows = []) {
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectOfficialIdentityRows(item, relationship, rows));
+    return rows;
+  }
+  if (!value || typeof value !== "object") return rows;
+
+  const stringList = value.string_list_data || value.stringListData;
+  if (Array.isArray(stringList)) {
+    stringList.forEach((item) => {
+      if (!item || typeof item !== "object") return;
+      rows.push({
+        name: value.title || item.value || "",
+        username: item.value || "",
+        profileUrl: item.href || "",
+        timestamp: item.timestamp || "",
+        relationship,
+      });
+    });
+    return rows;
+  }
+
+  const username = normalizedObjectValue(value, ["username", "user_name", "handle", "screenname", "value"]);
+  const profileUrl = normalizedObjectValue(value, ["profileurl", "profilelink", "href", "url"]);
+  const externalId = normalizedObjectValue(value, ["userid", "user_id", "externalid", "id"]);
+  if (username || profileUrl || externalId) {
+    rows.push({
+      username,
+      profileUrl,
+      externalId,
+      name: normalizedObjectValue(value, ["displayname", "fullname", "name", "title"]) || username,
+      timestamp: normalizedObjectValue(value, ["timestamp", "date", "followedat", "createdat", "time"]),
+      relationship,
+    });
+    return rows;
+  }
+
+  Object.values(value).forEach((item) => collectOfficialIdentityRows(item, relationship, rows));
+  return rows;
+}
+
+function identityRecordsFromCsv(text, relationship) {
+  const table = parseCsv(text.replace(/^\uFEFF/, ""));
+  if (table.length < 2) throw new Error("The CSV needs a header and at least one identity row");
+  const headers = table[0].map((header) => identityHeaderAliases[header.toLowerCase().replace(/[^a-z0-9]+/g, "")] || "");
+  if (!["username", "profileUrl", "externalId"].some((field) => headers.includes(field))) {
+    throw new Error("Identity CSV needs a username, profile URL, or platform ID column");
+  }
+  return table.slice(1).map((values) => ({
+    ...Object.fromEntries(headers.flatMap((header, index) => header ? [[header, values[index]?.trim() || ""]] : [])),
+    relationship,
+  }));
+}
+
+async function identityRecordsFromFile(file, relationship) {
+  const contents = (await file.text()).replace(/^\uFEFF/, "");
+  if (file.name.toLowerCase().endsWith(".json") || file.type === "application/json") {
+    let parsed;
+    try {
+      parsed = JSON.parse(contents);
+    } catch {
+      throw new Error(`${file.name} is not valid JSON`);
+    }
+    const rows = collectOfficialIdentityRows(parsed, relationship);
+    if (!rows.length) throw new Error(`${file.name} contains no recognizable platform identities`);
+    return rows;
+  }
+  return identityRecordsFromCsv(contents, relationship);
+}
+
+function dedupeIdentityRows(rows) {
+  const seen = new Set();
+  return rows.filter((row) => {
+    const key = [row.externalId, row.username, row.profileUrl].map((value) => String(value || "").trim().toLowerCase()).find(Boolean);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function chunks(values, size) {
+  const batches = [];
+  for (let index = 0; index < values.length; index += size) batches.push(values.slice(index, index + size));
+  return batches;
+}
+
+function renderIdentityImport(summary, { committed = false, progress = "" } = {}) {
+  const target = document.querySelector("#identity-import-preview");
+  if (committed) {
+    target.className = "import-preview success";
+    target.innerHTML = `<strong>${numberFormatter.format(summary.accepted)} platform identities committed</strong><span>${numberFormatter.format(summary.created)} new · ${numberFormatter.format(summary.updated)} refreshed · 0 direct-contact permissions assumed</span>`;
+    return;
+  }
+  target.className = `import-preview ${summary.valid ? "ready" : "error"}`;
+  const errors = (summary.invalidRows || []).slice(0, 5).map((item) => `<li>Row ${numberFormatter.format(item.row)}: ${escapeHtml(item.reason)}</li>`).join("");
+  target.innerHTML = `
+    <div class="import-summary"><strong>${numberFormatter.format(summary.valid)} identities ready</strong><span>${numberFormatter.format(summary.invalid)} rejected · ${numberFormatter.format(summary.duplicates)} duplicate rows removed</span></div>
+    <span>${escapeHtml(progress || "These records are platform-only signals; no email, SMS, or automated-DM consent is created.")}</span>
+    ${errors ? `<ul>${errors}</ul>` : ""}`;
 }
 
 function renderImportPreview(preview, { committed = false } = {}) {
@@ -682,6 +815,108 @@ document.querySelector("#commit-meta-leads").addEventListener("click", async (ev
     button.disabled = false;
   } finally {
     button.textContent = "Commit accepted leads ↗";
+  }
+});
+
+document.querySelector("#identity-import-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector("button[type=submit]");
+  const files = [...(form.elements.files.files || [])];
+  const authorization = document.querySelector("#identity-import-authorized");
+  const commitButton = document.querySelector("#commit-identity-import");
+  button.disabled = true;
+  authorization.checked = false;
+  authorization.disabled = true;
+  commitButton.disabled = true;
+  pendingIdentityImport = null;
+  try {
+    if (!files.length) throw new Error("Choose an official JSON or CSV follower file first");
+    if (files.some((file) => file.size > 40 * 1024 * 1024)) throw new Error("Each file must be smaller than 40 MB");
+    const source = form.elements.source.value;
+    const relationship = form.elements.relationship.value;
+    let rows = [];
+    for (const file of files) {
+      button.textContent = `Reading ${file.name}…`;
+      rows.push(...await identityRecordsFromFile(file, relationship));
+    }
+    if (rows.length > 250000) throw new Error("One import can contain up to 250,000 identities");
+    const extracted = rows.length;
+    rows = dedupeIdentityRows(rows).map((row) => ({ ...row, source, relationship }));
+    const duplicates = extracted - rows.length;
+    const batches = chunks(rows, 2000);
+    const aggregate = { received: rows.length, valid: 0, invalid: 0, duplicates, invalidRows: [] };
+    for (let index = 0; index < batches.length; index += 1) {
+      button.textContent = `Checking batch ${index + 1} of ${batches.length}…`;
+      const response = await fetch("/api/v1/imports/identities/preview", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ source, relationship, rows: batches[index] }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error?.message || "Could not preview this platform export");
+      aggregate.valid += body.data.summary.valid;
+      aggregate.invalid += body.data.summary.invalid;
+      aggregate.duplicates += body.data.summary.duplicates;
+      aggregate.invalidRows.push(...body.data.invalid.map((item) => ({ ...item, row: item.row + (index * 2000) })));
+      renderIdentityImport(aggregate, { progress: `Checked ${numberFormatter.format(Math.min((index + 1) * 2000, rows.length))} of ${numberFormatter.format(rows.length)} identities…` });
+    }
+    pendingIdentityImport = { source, relationship, batches, preview: aggregate };
+    renderIdentityImport(aggregate);
+    authorization.disabled = aggregate.valid === 0;
+  } catch (error) {
+    const target = document.querySelector("#identity-import-preview");
+    target.className = "import-preview error";
+    target.innerHTML = `<strong>Preview failed</strong><span>${escapeHtml(error.message)}</span>`;
+  } finally {
+    button.disabled = false;
+    button.textContent = "Preview official export";
+  }
+});
+
+document.querySelector("#identity-import-authorized").addEventListener("change", (event) => {
+  document.querySelector("#commit-identity-import").disabled = !event.currentTarget.checked || !pendingIdentityImport?.preview?.valid;
+});
+
+document.querySelector("#commit-identity-import").addEventListener("click", async (event) => {
+  const button = event.currentTarget;
+  if (!pendingIdentityImport || !document.querySelector("#identity-import-authorized").checked) return;
+  button.disabled = true;
+  const totals = { accepted: 0, created: 0, updated: 0 };
+  try {
+    const { source, relationship, batches } = pendingIdentityImport;
+    for (let index = 0; index < batches.length; index += 1) {
+      button.textContent = `Saving batch ${index + 1} of ${batches.length}…`;
+      const response = await fetch("/api/v1/imports/identities/commit", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          source,
+          relationship,
+          rows: batches[index],
+          confirmedAuthorized: true,
+          confirmedOfficialExport: true,
+          finalBatch: index === batches.length - 1,
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error?.message || `Batch ${index + 1} could not be saved`);
+      totals.accepted += body.data.accepted;
+      totals.created += body.data.created;
+      totals.updated += body.data.updated;
+      renderIdentityImport({ ...totals, valid: totals.accepted, invalid: 0, duplicates: 0 }, { progress: `Saved ${numberFormatter.format(totals.accepted)} platform identities…` });
+    }
+    renderIdentityImport(totals, { committed: true });
+    pendingIdentityImport = null;
+    document.querySelector("#identity-import-authorized").checked = false;
+    document.querySelector("#identity-import-authorized").disabled = true;
+    await loadDashboard();
+    showToast("Official platform identities are now in your private workspace.");
+  } catch (error) {
+    showToast(error.message);
+    button.disabled = false;
+  } finally {
+    button.textContent = "Commit platform identities ↗";
   }
 });
 

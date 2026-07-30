@@ -1,6 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getConnectionCatalog, normalizeLead, planSocialExperiment, previewLeadImport } from "../src/social.js";
+import {
+  getConnectionCatalog,
+  normalizeLead,
+  normalizePlatformIdentity,
+  planSocialExperiment,
+  previewLeadImport,
+  previewPlatformIdentityImport,
+} from "../src/social.js";
 
 test("connection catalog distinguishes social accounts from lead imports", () => {
   const catalog = getConnectionCatalog();
@@ -58,6 +65,43 @@ test("records with both contact methods require channel-specific consent", () =>
     consentChannels: "email,sms",
   });
   assert.deepEqual(accepted.value.consent.channels, ["email", "sms"]);
+});
+
+test("official Instagram identities remain platform-only without direct consent", () => {
+  const result = normalizePlatformIdentity({
+    username: "@Fan.One",
+    profileUrl: "https://www.instagram.com/fan.one/",
+    timestamp: 1785402000,
+    relationship: "follower",
+  }, 0, { source: "instagram_export" });
+  assert.equal(result.value.platform, "instagram");
+  assert.equal(result.value.handle, "fan.one");
+  assert.equal(result.value.relationship, "follower");
+  assert.match(result.value.contactKey, /^platform_/);
+  assert.equal("consent" in result.value, false);
+});
+
+test("platform identity previews deduplicate official export rows", () => {
+  const preview = previewPlatformIdentityImport({
+    source: "facebook_export",
+    relationship: "friend",
+    rows: [
+      { externalId: "person-1", name: "Ari", profileUrl: "https://www.facebook.com/ari" },
+      { externalId: "person-1", name: "Ari", profileUrl: "https://www.facebook.com/ari" },
+    ],
+  });
+  assert.equal(preview.summary.valid, 1);
+  assert.equal(preview.summary.duplicates, 1);
+  assert.equal(preview.summary.directlyReachable, 0);
+  assert.match(preview.summary.activationBoundary, /not email, SMS/i);
+});
+
+test("platform identity imports reject unrelated or insecure profile URLs", () => {
+  const result = normalizePlatformIdentity({
+    username: "fan",
+    profileUrl: "http://example.com/fan",
+  }, 0, { source: "instagram_export" });
+  assert.match(result.error.reason, /valid instagram URL/);
 });
 
 test("social experiment plan keeps a holdout and states platform delivery limits", () => {
