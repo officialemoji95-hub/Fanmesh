@@ -8,11 +8,12 @@ import { createWorkspaceStore, DatabaseError } from "./database.js";
 import { audienceSnapshot, demoFans } from "./demo-data.js";
 import { buildInsights, recommendCampaign } from "./insights.js";
 import { createOAuthService } from "./oauth.js";
+import { buildOrganicQueue, prepareOrganicPulse } from "./organic.js";
 import { openApiDocument } from "./openapi.js";
 import { getConnectionCatalog, planSocialExperiment, previewLeadImport, previewPlatformIdentityImport } from "./social.js";
 import { scoreAudience, scoreFan } from "./scoring.js";
 
-const APP_VERSION = "0.9.0";
+const APP_VERSION = "0.10.0";
 const port = Number(process.env.PORT || 3000);
 const publicDirectory = fileURLToPath(new URL("../public", import.meta.url));
 const maxBodyBytes = 2 * 1024 * 1024;
@@ -154,6 +155,7 @@ export function createRequestHandler({
           insights: buildInsights(demoFans),
           fans,
           connections: getConnectionCatalog({}, oauthService.catalog()),
+          organic: buildOrganicQueue({}),
         },
         meta: { demo: true, authenticated: false, count: fans.length },
         cookies: [],
@@ -166,12 +168,14 @@ export function createRequestHandler({
       limit,
     );
     const fans = scoreAudience(state.fans);
+    const organic = buildOrganicQueue(state.connectionStatuses);
     return {
       data: {
         workspace: state.workspace,
         insights: buildInsights(state.fans, state.snapshot),
         fans,
         connections: getConnectionCatalog(state.connectionStatuses, oauthService.catalog(state.connectionStatuses)),
+        organic,
       },
       meta: { demo: false, authenticated: true, count: fans.length },
       cookies: session.cookies,
@@ -374,6 +378,54 @@ export function createRequestHandler({
         return sendJson(response, 200, {
           data: activations,
           meta: { demo: false, persisted: true },
+        }, cookieHeaders(session.cookies));
+      } catch (error) {
+        return sendError(response, error);
+      }
+    }
+
+    if (request.method === "GET" && pathname === "/api/v1/organic/posts") {
+      try {
+        if (!authService.config.configured) {
+          return sendJson(response, 200, { data: buildOrganicQueue({}), meta: { demo: true, synced: false } });
+        }
+        const session = await authenticatedSession(request);
+        const state = await workspaceStore.getDashboard(session.data.user, session.data.accessToken, 1);
+        return sendJson(response, 200, {
+          data: buildOrganicQueue(state.connectionStatuses),
+          meta: { demo: false, synced: true },
+        }, cookieHeaders(session.cookies));
+      } catch (error) {
+        return sendError(response, error);
+      }
+    }
+
+    if (request.method === "POST" && pathname === "/api/v1/organic/activate") {
+      try {
+        if (!authService.config.configured) {
+          const error = new Error("Connect and sync Instagram or TikTok before starting an organic pulse");
+          error.statusCode = 409;
+          throw error;
+        }
+        const session = await authenticatedSession(request);
+        const input = await readJson(request);
+        const state = await workspaceStore.getDashboard(session.data.user, session.data.accessToken, 1);
+        const queue = buildOrganicQueue(state.connectionStatuses);
+        const post = queue.posts.find((item) => item.key === input.postKey);
+        if (!post) {
+          const error = new Error("That recent post is no longer available. Sync the platform and try again");
+          error.statusCode = 404;
+          throw error;
+        }
+        const eligibility = await workspaceStore.getActivationEligibility(
+          session.data.user,
+          session.data.accessToken,
+        );
+        const plan = prepareOrganicPulse(post, input, eligibility);
+        const saved = await workspaceStore.saveExperiment(session.data.user, session.data.accessToken, plan);
+        return sendJson(response, 201, {
+          data: saved,
+          meta: { demo: false, persisted: true, messagesSent: 0, organicBaselineCaptured: true },
         }, cookieHeaders(session.cookies));
       } catch (error) {
         return sendError(response, error);
