@@ -23,6 +23,7 @@ This repository contains a deployable proof of concept. Without Supabase configu
 - Consent-checked CSV import with preview, deterministic identity keys, deduplication, provenance, and private-workspace persistence
 - Official Facebook, Instagram, TikTok, and YouTube follower-download ingestion from JSON/CSV, with large-file batching and a strict platform-only activation boundary
 - Measured social distribution experiment planner with holdout cohorts
+- Persisted fan-alert activations with exact email/SMS eligibility, platform-only reach reporting, attribution-ready links, message templates, and provider-readiness status
 - OpenAPI document at `/api/v1/openapi.json`
 - Render Blueprint and health check
 - Node.js tests with no third-party runtime dependencies
@@ -87,7 +88,7 @@ Every score includes its component points and strongest signals. Sensitive trait
 
 ## The production direction
 
-Accounts, private workspaces, consented lead imports, official platform-download ingestion, and the multi-provider OAuth foundation are implemented. Meta measures authorized Instagram post health; automatic Instant Form retrieval remains available only when Meta grants the required app and Page permissions. Creators without Meta business verification can still import official data downloads and exported ad leads without uploading business documents to FanMesh. See [docs/OAUTH-CONNECTIONS.md](docs/OAUTH-CONNECTIONS.md), [docs/SOCIAL-PHASE-1.md](docs/SOCIAL-PHASE-1.md), [docs/AUDIENCE-IMPORT.md](docs/AUDIENCE-IMPORT.md), [docs/AUTH-AND-SUPABASE.md](docs/AUTH-AND-SUPABASE.md), [docs/PRODUCT.md](docs/PRODUCT.md), [docs/API.md](docs/API.md), and [docs/SECURITY.md](docs/SECURITY.md).
+Accounts, private workspaces, consented lead imports, official platform-download ingestion, fan-alert preparation, and the multi-provider OAuth foundation are implemented. Meta measures authorized Instagram post health; automatic Instant Form retrieval remains available only when Meta grants the required app and Page permissions. Creators without Meta business verification can import official data downloads, prepare attribution-ready campaigns, and see the exact gap between known followers and directly alertable fans. Email/SMS delivery remains disabled until a permitted provider is connected. See [docs/ACTIVATION.md](docs/ACTIVATION.md), [docs/OAUTH-CONNECTIONS.md](docs/OAUTH-CONNECTIONS.md), [docs/SOCIAL-PHASE-1.md](docs/SOCIAL-PHASE-1.md), [docs/AUDIENCE-IMPORT.md](docs/AUDIENCE-IMPORT.md), [docs/AUTH-AND-SUPABASE.md](docs/AUTH-AND-SUPABASE.md), [docs/PRODUCT.md](docs/PRODUCT.md), [docs/API.md](docs/API.md), and [docs/SECURITY.md](docs/SECURITY.md).
 
 ## Non-goals
 
