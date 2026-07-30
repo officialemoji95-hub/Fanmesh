@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 export const SOCIAL_PLATFORMS = ["instagram", "facebook", "tiktok", "youtube", "spotify"];
 export const LEAD_SOURCES = ["meta_ads", "facebook_export", "instagram_export", "tiktok_ads", "google_ads", "youtube_export", "csv"];
+export const IDENTITY_SOURCES = ["facebook_export", "instagram_export", "tiktok_export", "youtube_export"];
 
 const PLATFORM_CAPABILITIES = {
   meta: {
@@ -40,6 +41,7 @@ const IMPORT_CAPABILITIES = {
   meta_ads: { label: "Meta Ads leads", authMethod: "official_export_or_api", capabilities: ["lead_import", "ad_attribution"] },
   facebook_export: { label: "Facebook data export", authMethod: "official_export", capabilities: ["authorized_export", "identity_signal"] },
   instagram_export: { label: "Instagram data export", authMethod: "official_export", capabilities: ["authorized_export", "identity_signal"] },
+  tiktok_export: { label: "TikTok data export", authMethod: "official_export", capabilities: ["authorized_export", "identity_signal"] },
   tiktok_ads: { label: "TikTok Ads leads", authMethod: "official_export_or_api", capabilities: ["lead_import", "ad_attribution"] },
   google_ads: { label: "Google Ads leads", authMethod: "official_export_or_api", capabilities: ["lead_import", "ad_attribution"] },
   youtube_export: { label: "YouTube data export", authMethod: "official_export", capabilities: ["authorized_export", "identity_signal"] },
@@ -48,6 +50,20 @@ const IMPORT_CAPABILITIES = {
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_IMPORT_ROWS = 1000;
+const MAX_IDENTITY_IMPORT_ROWS = 2000;
+const SOURCE_PLATFORMS = Object.freeze({
+  facebook_export: "facebook",
+  instagram_export: "instagram",
+  tiktok_export: "tiktok",
+  youtube_export: "youtube",
+});
+const PROFILE_HOSTS = Object.freeze({
+  facebook: ["facebook.com", "fb.com"],
+  instagram: ["instagram.com"],
+  tiktok: ["tiktok.com"],
+  youtube: ["youtube.com", "youtu.be"],
+});
+const IDENTITY_RELATIONSHIPS = ["follower", "friend", "subscriber", "commenter", "liker", "viewer"];
 
 function text(value, maxLength = 160) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
@@ -80,6 +96,44 @@ function normalizePhone(value) {
 
 function normalizeSource(value) {
   return text(value, 40).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+function normalizeHandle(value) {
+  return text(value, 160).replace(/^@+/, "").trim().toLowerCase().replace(/\s+/g, "");
+}
+
+function safeProfileUrl(value, platform) {
+  const candidate = text(value, 1000);
+  if (!candidate) return "";
+  try {
+    const url = new URL(candidate);
+    const hosts = PROFILE_HOSTS[platform] || [];
+    if (url.protocol !== "https:" || !hosts.some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`))) return "";
+    url.hash = "";
+    return url.href;
+  } catch {
+    return "";
+  }
+}
+
+function handleFromProfileUrl(value, platform) {
+  const profileUrl = safeProfileUrl(value, platform);
+  if (!profileUrl) return "";
+  const parts = new URL(profileUrl).pathname.split("/").filter(Boolean);
+  const candidate = platform === "tiktok" ? parts.find((part) => part.startsWith("@")) : parts[0];
+  if (!candidate || ["profile.php", "channel", "c", "user"].includes(candidate.toLowerCase())) return "";
+  return normalizeHandle(candidate);
+}
+
+function identityTimestamp(value) {
+  if (Number.isFinite(Number(value)) && Number(value) > 0) {
+    const numeric = Number(value);
+    const timestamp = numeric > 1e12 ? numeric : numeric * 1000;
+    const date = new Date(timestamp);
+    return Number.isNaN(date.valueOf()) ? "" : date.toISOString();
+  }
+  const candidate = text(value, 60);
+  return candidate && !Number.isNaN(Date.parse(candidate)) ? new Date(candidate).toISOString() : "";
 }
 
 function consentChannels(value, { email, phone }) {
@@ -208,6 +262,93 @@ export function previewLeadImport(input = {}) {
       withPhone: valid.filter((lead) => lead.phone).length,
       sourceCounts,
       consentRequired: true,
+    },
+  };
+}
+
+export function normalizePlatformIdentity(row = {}, index = 0, defaults = {}) {
+  const source = normalizeSource(row.source || defaults.source);
+  if (!IDENTITY_SOURCES.includes(source)) {
+    return { error: invalid(index, `source must be one of: ${IDENTITY_SOURCES.join(", ")}`) };
+  }
+  const platform = SOURCE_PLATFORMS[source];
+  const suppliedUrl = text(row.profileUrl || row.profile_url || row.href || row.url, 1000);
+  const profileUrl = safeProfileUrl(suppliedUrl, platform);
+  if (suppliedUrl && !profileUrl) return { error: invalid(index, `profile URL is not a valid ${platform} URL`) };
+  const exportedValue = ["instagram", "tiktok"].includes(platform) ? row.value : "";
+  const handle = normalizeHandle(row.handle || row.username || row.userName || handleFromProfileUrl(profileUrl, platform) || exportedValue);
+  const externalId = text(row.externalId || row.external_id || row.userId || row.user_id || row.id, 160);
+  const name = text(row.name || row.displayName || row.display_name || row.title || row.value || handle, 120);
+  const relationship = normalizeSource(row.relationship || defaults.relationship || "follower");
+  const observedAt = identityTimestamp(row.observedAt || row.observed_at || row.timestamp || row.time || row.createdAt || row.created_at);
+  if (!IDENTITY_RELATIONSHIPS.includes(relationship)) {
+    return { error: invalid(index, `relationship must be one of: ${IDENTITY_RELATIONSHIPS.join(", ")}`) };
+  }
+  if (!handle && !externalId && !profileUrl) {
+    return { error: invalid(index, "a username, platform ID, or official profile URL is required") };
+  }
+  const stableIdentity = externalId || handle || profileUrl.toLowerCase();
+  const identityKey = hash(`${platform}:${stableIdentity}`);
+  return {
+    value: {
+      contactKey: `platform_${identityKey}`,
+      sourceKey: hash(`${source}:${stableIdentity}`),
+      source,
+      platform,
+      externalId: externalId || undefined,
+      handle: handle || undefined,
+      name: name || handle || `${platform} fan`,
+      profileUrl: profileUrl || undefined,
+      relationship,
+      observedAt: observedAt || undefined,
+    },
+  };
+}
+
+export function previewPlatformIdentityImport(input = {}) {
+  if (!Array.isArray(input.rows)) throw new TypeError("rows must be an array");
+  if (input.rows.length === 0) throw new TypeError("rows must contain at least one platform identity");
+  if (input.rows.length > MAX_IDENTITY_IMPORT_ROWS) {
+    throw new TypeError(`rows cannot exceed ${MAX_IDENTITY_IMPORT_ROWS} records per batch`);
+  }
+  const source = normalizeSource(input.source);
+  if (!IDENTITY_SOURCES.includes(source)) throw new TypeError(`source must be one of: ${IDENTITY_SOURCES.join(", ")}`);
+  const valid = [];
+  const invalidRows = [];
+  const seen = new Set();
+  let duplicates = 0;
+  input.rows.forEach((row, index) => {
+    const result = normalizePlatformIdentity(row, index, { source, relationship: input.relationship });
+    if (result.error) {
+      invalidRows.push(result.error);
+      return;
+    }
+    if (seen.has(result.value.contactKey)) {
+      invalidRows.push(invalid(index, "duplicate platform identity in this batch"));
+      duplicates += 1;
+      return;
+    }
+    seen.add(result.value.contactKey);
+    valid.push(result.value);
+  });
+  const relationshipCounts = valid.reduce((counts, identity) => {
+    counts[identity.relationship] = (counts[identity.relationship] || 0) + 1;
+    return counts;
+  }, {});
+  return {
+    source,
+    platform: SOURCE_PLATFORMS[source],
+    valid,
+    invalid: invalidRows,
+    summary: {
+      received: input.rows.length,
+      valid: valid.length,
+      invalid: invalidRows.length,
+      duplicates,
+      relationshipCounts,
+      directlyReachable: 0,
+      consentRequired: false,
+      activationBoundary: "Platform-only identities are discovery signals. They are not email, SMS, or automated-DM permission.",
     },
   };
 }

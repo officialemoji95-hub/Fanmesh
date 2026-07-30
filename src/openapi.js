@@ -2,7 +2,7 @@ export const openApiDocument = {
   openapi: "3.1.0",
   info: {
     title: "FanMesh API",
-    version: "0.7.0",
+    version: "0.8.0",
     description: "Audience intelligence API for consented fan relationships.",
   },
   servers: [{ url: "/api/v1" }],
@@ -164,6 +164,47 @@ export const openApiDocument = {
           content: { "application/json": { schema: { type: "object", required: ["source", "rows", "confirmedAuthorized"] } } },
         },
         responses: { 201: { description: "Import completed" }, 400: { description: "Invalid, unconfirmed, or unconsented records" }, 401: { description: "Sign-in required" } },
+      },
+    },
+    "/imports/identities/preview": {
+      post: {
+        summary: "Validate a batch from an official platform data download without granting direct-contact consent",
+        security: [{ creatorSession: [] }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: {
+            type: "object",
+            required: ["source", "relationship", "rows"],
+            properties: {
+              source: { type: "string", enum: ["facebook_export", "instagram_export", "tiktok_export", "youtube_export"] },
+              relationship: { type: "string", enum: ["follower", "friend", "subscriber", "commenter", "liker", "viewer"] },
+              rows: { type: "array", maxItems: 2000, items: { type: "object" } },
+            },
+          } } },
+        },
+        responses: { 200: { description: "Platform-only identity import preview" }, 400: { description: "Invalid export records" }, 401: { description: "Sign-in required in account mode" } },
+      },
+    },
+    "/imports/identities/commit": {
+      post: {
+        summary: "Commit an authorized official-export batch as platform-only identities",
+        security: [{ creatorSession: [] }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: {
+            type: "object",
+            required: ["source", "relationship", "rows", "confirmedAuthorized", "confirmedOfficialExport"],
+            properties: {
+              source: { type: "string", enum: ["facebook_export", "instagram_export", "tiktok_export", "youtube_export"] },
+              relationship: { type: "string" },
+              rows: { type: "array", maxItems: 2000, items: { type: "object" } },
+              confirmedAuthorized: { type: "boolean", const: true },
+              confirmedOfficialExport: { type: "boolean", const: true },
+              finalBatch: { type: "boolean", description: "Refresh the aggregate audience snapshot after the last batch" },
+            },
+          } } },
+        },
+        responses: { 201: { description: "Platform identities saved without direct-contact consent" }, 400: { description: "Confirmation or valid identities required" }, 401: { description: "Sign-in required" } },
       },
     },
     "/experiments/social": {

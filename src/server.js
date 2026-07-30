@@ -8,10 +8,10 @@ import { audienceSnapshot, demoFans } from "./demo-data.js";
 import { buildInsights, recommendCampaign } from "./insights.js";
 import { createOAuthService } from "./oauth.js";
 import { openApiDocument } from "./openapi.js";
-import { getConnectionCatalog, planSocialExperiment, previewLeadImport } from "./social.js";
+import { getConnectionCatalog, planSocialExperiment, previewLeadImport, previewPlatformIdentityImport } from "./social.js";
 import { scoreAudience, scoreFan } from "./scoring.js";
 
-const APP_VERSION = "0.7.0";
+const APP_VERSION = "0.8.0";
 const port = Number(process.env.PORT || 3000);
 const publicDirectory = fileURLToPath(new URL("../public", import.meta.url));
 const maxBodyBytes = 2 * 1024 * 1024;
@@ -117,6 +117,15 @@ function publicMetaLeadPreview(batch, preview) {
     forms: batch.forms,
     fetchedAt: batch.fetchedAt,
     limit: batch.limit,
+    invalid: preview.invalid.slice(0, 20),
+    summary: preview.summary,
+  };
+}
+
+function publicPlatformIdentityPreview(preview) {
+  return {
+    source: preview.source,
+    platform: preview.platform,
     invalid: preview.invalid.slice(0, 20),
     summary: preview.summary,
   };
@@ -395,6 +404,53 @@ export function createRequestHandler({
           preview,
         );
         return sendJson(response, 201, { data: saved, meta: { demo: false, persisted: true } }, cookieHeaders(session.cookies));
+      } catch (error) {
+        return sendError(response, error);
+      }
+    }
+
+    if (request.method === "POST" && pathname === "/api/v1/imports/identities/preview") {
+      try {
+        let cookies = [];
+        if (authService.config.configured) cookies = (await authenticatedSession(request)).cookies;
+        const preview = previewPlatformIdentityImport(await readJson(request));
+        return sendJson(response, 200, {
+          data: publicPlatformIdentityPreview(preview),
+          meta: { persisted: false, directContactConsentGranted: false },
+        }, cookieHeaders(cookies));
+      } catch (error) {
+        return sendError(response, error);
+      }
+    }
+
+    if (request.method === "POST" && pathname === "/api/v1/imports/identities/commit") {
+      try {
+        if (!authService.config.configured) {
+          throw new DatabaseError("Configure Supabase before committing platform identities", 503);
+        }
+        const session = await authenticatedSession(request);
+        const input = await readJson(request);
+        if (input.confirmedAuthorized !== true || input.confirmedOfficialExport !== true) {
+          const error = new Error("Confirm that this file is your official platform data export");
+          error.statusCode = 400;
+          throw error;
+        }
+        const preview = previewPlatformIdentityImport(input);
+        if (preview.summary.valid === 0) {
+          const error = new Error("No valid platform identities are available to commit");
+          error.statusCode = 400;
+          throw error;
+        }
+        const saved = await workspaceStore.commitPlatformIdentityImport(
+          session.data.user,
+          session.data.accessToken,
+          preview,
+          { refreshSnapshot: input.finalBatch !== false },
+        );
+        return sendJson(response, 201, {
+          data: saved,
+          meta: { demo: false, persisted: true, directContactConsentGranted: false },
+        }, cookieHeaders(session.cookies));
       } catch (error) {
         return sendError(response, error);
       }
