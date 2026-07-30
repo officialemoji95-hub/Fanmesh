@@ -169,6 +169,7 @@ test("Meta callback syncs authorized Pages, organic Instagram media, ad insights
           { permission: "pages_show_list", status: "granted" },
           { permission: "pages_read_engagement", status: "granted" },
           { permission: "instagram_basic", status: "granted" },
+          { permission: "instagram_manage_insights", status: "granted" },
           { permission: "ads_read", status: "granted" },
           { permission: "leads_retrieval", status: "granted" },
           { permission: "business_management", status: "declined" },
@@ -186,6 +187,16 @@ test("Meta callback syncs authorized Pages, organic Instagram media, ad insights
           like_count: 80,
           comments_count: 20,
         }] });
+      }
+      if (parsed.pathname.endsWith("/media-1/insights")) {
+        assert.equal(parsed.searchParams.get("metric"), "views,reach,saved,shares,total_interactions");
+        return response({ data: [
+          { name: "views", values: [{ value: 1200 }] },
+          { name: "reach", values: [{ value: 900 }] },
+          { name: "saved", values: [{ value: 25 }] },
+          { name: "shares", values: [{ value: 30 }] },
+          { name: "total_interactions", total_value: { value: 155 } },
+        ] });
       }
       if (parsed.pathname.endsWith("/ig-1")) {
         return response({ id: "ig-1", username: "artist", name: "Artist IG", followers_count: 8000, follows_count: 100, media_count: 30 });
@@ -216,7 +227,10 @@ test("Meta callback syncs authorized Pages, organic Instagram media, ad insights
   assert.equal(result.status, "connected");
   assert.equal(result.account, "Artist");
   assert.equal(savedConnection.metadata.metrics.totalFollowers, 20000);
-  assert.equal(savedConnection.metadata.metrics.recentMediaInteractions, 100);
+  assert.equal(savedConnection.metadata.metrics.recentMediaInteractions, 155);
+  assert.equal(savedConnection.metadata.metrics.averageViews, 1200);
+  assert.equal(savedConnection.metadata.metrics.averageMetaReach, 900);
+  assert.equal(savedConnection.metadata.metrics.metaEngagementRate, 17.22);
   assert.equal(savedConnection.metadata.metrics.knownLeads, 43);
   assert.equal(savedConnection.metadata.public.instagramAccounts[0].recentMedia[0].productType, "reels");
   assert.equal(savedConnection.metadata.public.adSummary30d.spend, 125.5);
@@ -230,6 +244,79 @@ test("Meta callback syncs authorized Pages, organic Instagram media, ad insights
   assert.equal(privateCredentials.accessToken, "meta-long");
   assert.equal(privateCredentials.grantedScopes.includes("business_management"), false);
   assert.equal(privateCredentials.providerAssets.pageTokens["page-1"], "page-secret");
+});
+
+test("Meta lead import fetches selected authorized forms only after creator consent confirmation", async () => {
+  const now = Date.parse("2026-07-30T10:00:00.000Z");
+  const environment = {
+    NODE_ENV: "production",
+    APP_BASE_URL: "https://fanmesh.example",
+    OAUTH_TOKEN_ENCRYPTION_KEY: encryptionKey,
+    META_APP_ID: "meta-client",
+    META_APP_SECRET: "meta-secret",
+    META_GRAPH_VERSION: "v25.0",
+  };
+  const vault = createTokenVault(environment);
+  const credentials = vault.seal({
+    accessToken: "meta-user-token",
+    expiresAt: "2026-09-01T00:00:00.000Z",
+    grantedScopes: ["leads_retrieval"],
+    providerAssets: { pageTokens: { "page-1": "page-token" } },
+  });
+  const service = createOAuthService({
+    environment,
+    now: () => now,
+    workspaceStore: {
+      async getSourceConnection() {
+        return {
+          platform: "meta",
+          status: "connected",
+          scopes: ["leads_retrieval"],
+          metadata: {
+            credentials,
+            public: { leadForms: [{ id: "form-1", pageId: "page-1", name: "Early access" }] },
+          },
+        };
+      },
+    },
+    async fetchImpl(url) {
+      const parsed = new URL(String(url));
+      assert.equal(parsed.pathname, "/v25.0/form-1/leads");
+      assert.match(parsed.searchParams.get("fields"), /field_data/);
+      assert.equal(parsed.searchParams.get("access_token"), "page-token");
+      return response({ data: [{
+        id: "lead-1",
+        created_time: "2026-07-29T11:00:00+0000",
+        campaign_id: "campaign-1",
+        campaign_name: "Release waitlist",
+        field_data: [
+          { name: "full_name", values: ["Ari Fan"] },
+          { name: "email", values: ["ari@example.com"] },
+          { name: "phone_number", values: ["+2348012345678"] },
+          { name: "city", values: ["Lagos"] },
+        ],
+      }] });
+    },
+  });
+  const session = { user: { id: "user-1" }, accessToken: "supabase-token" };
+
+  await assert.rejects(
+    service.fetchMetaLeadImport(session, { formIds: ["form-1"], consentChannels: ["email"] }),
+    /Confirm that the selected Meta forms/,
+  );
+  const batch = await service.fetchMetaLeadImport(session, {
+    formIds: ["form-1"],
+    consentChannels: ["email", "sms"],
+    confirmedAuthorized: true,
+    confirmedConsent: true,
+  });
+  assert.equal(batch.rows.length, 1);
+  assert.equal(batch.rows[0].email, "ari@example.com");
+  assert.equal(batch.rows[0].phone, "+2348012345678");
+  assert.equal(batch.rows[0].consentSource, "meta_instant_form:form-1:creator_attested");
+  assert.deepEqual(batch.rows[0].consentChannels, ["email", "sms"]);
+  assert.equal(JSON.stringify(batch).includes("page-token"), false);
+  assert.equal(JSON.stringify(batch).includes("meta-user-token"), false);
 });
 
 test("OAuth callback refuses a mismatched anti-forgery state", async () => {
