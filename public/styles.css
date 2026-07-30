@@ -184,6 +184,8 @@ h2 { font-size: 18px; }
 .import-intro ul { margin: 13px 0 0; padding-left: 15px; color: #8b8b91; font-size: 8px; line-height: 1.7; }
 #audience-import-form { display: grid; gap: 9px; }
 .import-fields { display: grid; grid-template-columns: 1fr 1.25fr; gap: 8px; }
+.identity-import-fields { grid-template-columns: 1fr 1fr 1.35fr; }
+.identity-import-workbench { border-color: #d8e6c2; background: linear-gradient(135deg, #f6faee, #fbfaf6 60%); }
 .import-fields label { display: grid; gap: 5px; color: #69696f; font-size: 9px; font-weight: 700; }
 .import-fields select, .import-fields input[type="file"] { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid #dedcd5; outline: none; background: #fffefb; border-radius: 7px; color: var(--ink); font-size: 9px; }
 .import-fields input[type="file"] { padding: 7px 8px; }
@@ -419,7 +421,7 @@ body.auth-open { overflow: hidden; }
   .sequence-step p { grid-column: 1 / -1; margin: 2px 0 0; }
   .social-step { grid-template-columns: 23px 1fr; }
   .social-step p { grid-column: 1 / -1; }
-  .import-fields { grid-template-columns: 1fr; }
+  .import-fields, .identity-import-fields { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {
