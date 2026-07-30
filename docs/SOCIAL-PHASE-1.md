@@ -21,8 +21,10 @@ Supabase-backed account mode now persists authorized leads, consent events, and 
 1. `GET /api/v1/connections` shows the capability boundary for Instagram/Meta, TikTok, YouTube, Spotify, and authorized lead sources.
 2. `POST /api/v1/imports/leads/preview` validates a user-provided export before anything is stored. Fix rows with invalid contact fields or missing consent provenance.
 3. `POST /api/v1/imports/leads/commit` revalidates and saves accepted identities only after the creator confirms the source and consent accuracy.
-4. `POST /api/v1/experiments/social` drafts the next post's distribution sequence. It defaults to a 10% holdout of eligible direct identities and explicitly labels platform-only followers as gated.
-5. A future authenticated worker will execute only the steps whose provider connection and consent record are active, then record delivery, click, save, and conversion events.
+4. `POST /api/v1/activations/prepare` saves a real post destination, calculates exact email/SMS eligibility, generates attribution-ready links, and reports provider readiness without pretending to send.
+5. `GET /api/v1/activations` returns recent saved fan-alert drafts for the private workspace.
+6. `POST /api/v1/experiments/social` remains available for broader native publishing and authorized-ad experiment planning.
+7. A future authenticated worker will execute only the direct-delivery steps whose provider connection and consent record are active, then record delivery, click, save, and conversion events.
 
 ## Provider setup needed before production execution
 
