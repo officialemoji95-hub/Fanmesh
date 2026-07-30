@@ -65,6 +65,14 @@ Accepts `{ "source": "meta_ads", "rows": [...] }` and validates up to 1,000 firs
 
 Requires a creator session and accepts the same source and rows plus `"confirmedAuthorized": true`. The server revalidates the full upload, upserts deduplicated fan records, merges earlier source provenance and channel signals, writes new consent events, and records an import run. Repeating an identical import does not duplicate the matching consent event.
 
+### `POST /api/v1/imports/identities/preview`
+
+Requires a creator session in account mode. Accepts an official-export source (`facebook_export`, `instagram_export`, `tiktok_export`, or `youtube_export`), a relationship type, and up to 2,000 locally extracted JSON/CSV rows per batch. It validates usernames, platform IDs, and platform-owned HTTPS profile URLs and returns only summary counts plus limited row errors. No direct-contact consent is created.
+
+### `POST /api/v1/imports/identities/commit`
+
+Requires the same batch plus `confirmedAuthorized: true` and `confirmedOfficialExport: true`. The server revalidates and upserts platform-only fan records with source, relationship, observation time, and import provenance. The browser sets `finalBatch: true` on the last batch so FanMesh refreshes exact aggregate audience counts efficiently.
+
 ### `POST /api/v1/oauth/meta/leads/preview`
 
 Requires a creator session and a connected Meta account with `leads_retrieval`. Accepts selected authorized `formIds`, `consentChannels`, `confirmedAuthorized: true`, and `confirmedConsent: true`. FanMesh fetches up to 100 recent submissions server-side and returns only validation counts, invalid reasons, and form metadata. Lead names, emails, phone numbers, platform tokens, and normalized rows are not returned to browser JavaScript.
