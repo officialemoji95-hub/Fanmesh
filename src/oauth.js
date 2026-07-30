@@ -12,6 +12,8 @@ const STATE_COOKIE = "fanmesh_oauth_state";
 const STATE_TTL_MS = 10 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 15000;
 const DEFAULT_META_GRAPH_VERSION = "v25.0";
+const MAX_META_LEAD_FORMS = 10;
+const MAX_META_LEADS = 100;
 
 export class OAuthError extends Error {
   constructor(message, statusCode = 400) {
@@ -27,8 +29,8 @@ const PROVIDERS = Object.freeze({
     clientIdKey: "META_APP_ID",
     clientSecretKey: "META_APP_SECRET",
     scopesKey: "META_OAUTH_SCOPES",
-    scopes: ["public_profile", "pages_show_list", "pages_read_engagement", "instagram_basic", "ads_read", "leads_retrieval", "business_management"],
-    capabilities: ["Facebook Pages", "Instagram professional media", "Meta ad insights", "Lead-form inventory"],
+    scopes: ["public_profile", "pages_show_list", "pages_read_engagement", "instagram_basic", "instagram_manage_insights", "ads_read", "leads_retrieval", "business_management"],
+    capabilities: ["Facebook Pages", "Instagram post insights", "Meta ad insights", "Authorized lead import"],
     caveat: "Pages, Instagram professional accounts, ads and lead forms appear only when Meta grants the matching scopes and asset roles.",
   },
   tiktok: {
@@ -419,6 +421,7 @@ function metaIssueMessage(area) {
     permissions: "Meta did not return the permission inventory; reconnect before relying on the asset summary.",
     pages: "Grant Page list/read access and confirm the Facebook account has a role on the Page.",
     instagram: "Link an Instagram professional account to an authorized Page and grant Instagram basic access.",
+    instagram_insights: "Grant Instagram insights access to measure reach, views, saves, shares, and interactions for professional media.",
     ads: "Grant ads_read and confirm the authorized person can access the ad account.",
     lead_forms: "Grant leads_retrieval and Page lead access before FanMesh can inventory Instant Forms.",
   };
@@ -449,6 +452,78 @@ function normalizedMetaMedia(media) {
     likes,
     comments,
     interactions: likes + comments,
+  };
+}
+
+function metaInsightValue(payload, name) {
+  const metric = (Array.isArray(payload?.data) ? payload.data : []).find((item) => item?.name === name);
+  const value = metric?.total_value?.value ?? metric?.values?.[0]?.value;
+  return Math.round(nonNegativeNumber(value));
+}
+
+function normalizedMetaInsights(payload, media) {
+  const views = metaInsightValue(payload, "views");
+  const reach = metaInsightValue(payload, "reach");
+  const saves = metaInsightValue(payload, "saved");
+  const shares = metaInsightValue(payload, "shares");
+  const reportedInteractions = metaInsightValue(payload, "total_interactions");
+  const totalInteractions = reportedInteractions || media.likes + media.comments + saves + shares;
+  return {
+    views,
+    reach,
+    saves,
+    shares,
+    totalInteractions,
+    engagementRate: reach ? Math.round((totalInteractions / reach) * 10000) / 100 : 0,
+  };
+}
+
+function normalizedFieldName(value) {
+  return text(value, 100).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+function firstMetaField(fields, names) {
+  for (const name of names) {
+    const values = fields.get(name);
+    if (values?.length) return text(values[0], 300);
+  }
+  return "";
+}
+
+function normalizeMetaLead(lead, form, channels) {
+  const fields = new Map((Array.isArray(lead?.field_data) ? lead.field_data : []).map((field) => [
+    normalizedFieldName(field?.name),
+    (Array.isArray(field?.values) ? field.values : []).map((value) => text(value, 300)).filter(Boolean),
+  ]));
+  const firstName = firstMetaField(fields, ["first_name", "firstname"]);
+  const lastName = firstMetaField(fields, ["last_name", "lastname"]);
+  const name = firstMetaField(fields, ["full_name", "fullname", "name"]) || [firstName, lastName].filter(Boolean).join(" ");
+  const email = firstMetaField(fields, ["email", "email_address"]);
+  const phone = firstMetaField(fields, ["phone_number", "phone", "mobile_number", "mobile"]);
+  const location = [
+    firstMetaField(fields, ["city"]),
+    firstMetaField(fields, ["state", "province"]),
+    firstMetaField(fields, ["country"]),
+  ].filter(Boolean).join(", ");
+  const consentAt = Number.isFinite(Date.parse(lead?.created_time || ""))
+    ? new Date(lead.created_time).toISOString()
+    : "";
+  const availableChannels = channels.filter((channel) => (channel === "email" ? email : phone));
+  return {
+    name,
+    email,
+    phone,
+    location,
+    source: "meta_ads",
+    sourceId: text(lead?.id, 160),
+    campaignId: text(lead?.campaign_id, 100),
+    utmSource: "meta",
+    utmMedium: "paid_social",
+    utmCampaign: text(lead?.campaign_name, 100),
+    consent: true,
+    consentAt,
+    consentSource: `meta_instant_form:${form.id}:creator_attested`,
+    consentChannels: availableChannels,
   };
 }
 
@@ -513,10 +588,18 @@ async function syncMeta(config, token, fetchImpl) {
         limit: "20",
       },
     )), { data: [] });
-    const recentMedia = (Array.isArray(mediaPayload.data) ? mediaPayload.data : [])
+    const mediaRows = (Array.isArray(mediaPayload.data) ? mediaPayload.data : [])
       .slice(0, 20)
       .map(normalizedMetaMedia)
       .filter((media) => media.id);
+    const recentMedia = await Promise.all(mediaRows.map(async (media) => {
+      const insightPayload = await optional("instagram_insights", () => platformRequest(fetchImpl, accessTokenUrl(
+        `${base}/${media.id}/insights`,
+        assetToken,
+        { metric: "views,reach,saved,shares,total_interactions" },
+      )), { data: [] });
+      return { ...media, ...normalizedMetaInsights(insightPayload, media) };
+    }));
     return {
       id: text(instagram.id, 80),
       username: text(instagram.username, 120),
@@ -594,6 +677,12 @@ async function syncMeta(config, token, fetchImpl) {
     leads: adAccounts.reduce((sum, account) => sum + account.insights30d.leads, 0),
   };
   const recentMedia = instagramAccounts.flatMap((account) => account.recentMedia || []);
+  const metaViews = recentMedia.map((media) => media.views).filter((value) => value > 0);
+  const metaReach = recentMedia.map((media) => media.reach).filter((value) => value > 0);
+  const sortedReach = [...metaReach].sort((first, second) => first - second);
+  const reachMiddle = Math.floor(sortedReach.length / 2);
+  const totalMediaInteractions = recentMedia.reduce((sum, media) => sum + media.totalInteractions, 0);
+  const totalMediaReach = metaReach.reduce((sum, value) => sum + value, 0);
   const totalFollowers = pages.reduce((sum, page) => sum + page.followers, 0)
     + instagramAccounts.reduce((sum, account) => sum + (account.followers || 0), 0);
   const knownLeadCount = leadForms.reduce((sum, form) => sum + (Number(form.leadCount) || 0), 0);
@@ -613,14 +702,21 @@ async function syncMeta(config, token, fetchImpl) {
     grantedScopes,
     metrics: {
       totalFollowers,
-      averageViews: 0,
+      averageViews: metaViews.length ? Math.round(metaViews.reduce((sum, value) => sum + value, 0) / metaViews.length) : 0,
+      averageMetaReach: metaReach.length ? Math.round(totalMediaReach / metaReach.length) : 0,
+      medianMetaReach: sortedReach.length
+        ? Math.round(sortedReach.length % 2 ? sortedReach[reachMiddle] : (sortedReach[reachMiddle - 1] + sortedReach[reachMiddle]) / 2)
+        : 0,
+      metaEngagementRate: totalMediaReach ? Math.round((totalMediaInteractions / totalMediaReach) * 10000) / 100 : 0,
       pages: pages.length,
       instagramAccounts: instagramAccounts.length,
       adAccounts: adAccounts.length,
       leadForms: leadForms.length,
       knownLeads: knownLeadCount,
       recentMediaCount: recentMedia.length,
-      recentMediaInteractions: recentMedia.reduce((sum, media) => sum + media.interactions, 0),
+      recentMediaInteractions: totalMediaInteractions,
+      recentMediaReach: totalMediaReach,
+      recentMediaViews: metaViews.reduce((sum, value) => sum + value, 0),
       adImpressions30d: adSummary30d.impressions,
       adReach30d: adSummary30d.reach,
       adClicks30d: adSummary30d.clicks,
@@ -855,6 +951,14 @@ export function createOAuthService({
     return providerConfig;
   }
 
+  async function connectedAuthorization(providerConfig, session) {
+    const connection = await workspaceStore.getSourceConnection(session.user, session.accessToken, providerConfig.provider);
+    if (!connection?.metadata?.credentials) throw new OAuthError(`${providerConfig.label} is not connected`, 409);
+    let token = vault.open(connection.metadata.credentials);
+    if (Date.parse(token.expiresAt || "") <= now()) token = await refreshAccessToken(providerConfig, token, fetchImpl);
+    return { connection, token };
+  }
+
   async function begin(provider, session) {
     const providerConfig = requireReady(provider);
     const state = randomBytes(24).toString("base64url");
@@ -928,10 +1032,7 @@ export function createOAuthService({
 
   async function sync(provider, session) {
     const providerConfig = requireReady(provider);
-    const connection = await workspaceStore.getSourceConnection(session.user, session.accessToken, provider);
-    if (!connection?.metadata?.credentials) throw new OAuthError(`${providerConfig.label} is not connected`, 409);
-    let token = vault.open(connection.metadata.credentials);
-    if (Date.parse(token.expiresAt || "") <= now()) token = await refreshAccessToken(providerConfig, token, fetchImpl);
+    const { connection, token } = await connectedAuthorization(providerConfig, session);
     const syncResult = await synchronize(providerConfig, token, fetchImpl);
     const storedToken = Array.isArray(syncResult.grantedScopes)
       ? { ...token, grantedScopes: syncResult.grantedScopes }
@@ -952,6 +1053,57 @@ export function createOAuthService({
     return { provider, status: "connected", account: safeAccountLabel(syncResult, providerConfig.label), saved };
   }
 
+  async function fetchMetaLeadImport(session, input = {}) {
+    const providerConfig = requireReady("meta");
+    if (input.confirmedAuthorized !== true || input.confirmedConsent !== true) {
+      throw new OAuthError("Confirm that the selected Meta forms are yours and their disclosure permits creator updates", 400);
+    }
+    const channels = [...new Set((Array.isArray(input.consentChannels) ? input.consentChannels : [])
+      .map((channel) => text(channel, 20).toLowerCase())
+      .filter((channel) => ["email", "sms"].includes(channel)))];
+    if (!channels.length) throw new OAuthError("Choose at least one consented contact channel", 400);
+
+    const { connection, token } = await connectedAuthorization(providerConfig, session);
+    const scopes = new Set([...(connection.scopes || []), ...(token.grantedScopes || [])]);
+    if (!scopes.has("leads_retrieval")) throw new OAuthError("Reconnect Meta and grant leads_retrieval before importing Instant Form submissions", 403);
+    const availableForms = (Array.isArray(connection.metadata?.public?.leadForms) ? connection.metadata.public.leadForms : [])
+      .filter((form) => form?.id && form?.pageId)
+      .slice(0, 250);
+    const requestedIds = [...new Set((Array.isArray(input.formIds) ? input.formIds : [])
+      .map((value) => text(value, 80))
+      .filter(Boolean))];
+    if (!requestedIds.length) throw new OAuthError("Select at least one authorized Meta Instant Form", 400);
+    if (requestedIds.length > MAX_META_LEAD_FORMS) throw new OAuthError(`Select no more than ${MAX_META_LEAD_FORMS} Meta forms per import`, 400);
+    const selectedForms = requestedIds.map((id) => availableForms.find((form) => form.id === id));
+    if (selectedForms.some((form) => !form)) throw new OAuthError("A selected Meta form is not part of this authorized connection", 403);
+
+    const pageTokens = token.providerAssets?.pageTokens || {};
+    const batches = await Promise.all(selectedForms.map(async (form) => {
+      const assetToken = pageTokens[form.pageId] || token.accessToken;
+      const payload = await platformRequest(fetchImpl, accessTokenUrl(
+        `${metaGraphBase(providerConfig)}/${form.id}/leads`,
+        assetToken,
+        {
+          fields: "id,created_time,ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,form_id,field_data",
+          limit: String(MAX_META_LEADS),
+        },
+      ));
+      return (Array.isArray(payload.data) ? payload.data : []).map((lead) => normalizeMetaLead(lead, form, channels));
+    }));
+    const rows = batches.flat().slice(0, MAX_META_LEADS);
+    return {
+      source: "meta_ads",
+      forms: selectedForms.map((form) => ({
+        id: text(form.id, 80),
+        name: text(form.name, 120) || "Untitled Instant Form",
+        pageId: text(form.pageId, 80),
+      })),
+      rows,
+      fetchedAt: new Date(now()).toISOString(),
+      limit: MAX_META_LEADS,
+    };
+  }
+
   async function disconnect(provider, session) {
     const providerConfig = config(provider);
     if (!PROVIDERS[provider]) throw new OAuthError("Unsupported social platform", 404);
@@ -965,7 +1117,7 @@ export function createOAuthService({
     return { provider, label: providerConfig.label, status: "revoked" };
   }
 
-  return Object.freeze({ begin, callback, catalog, disconnect, sync, vault });
+  return Object.freeze({ begin, callback, catalog, disconnect, fetchMetaLeadImport, sync, vault });
 }
 
 export { PROVIDERS, STATE_COOKIE };

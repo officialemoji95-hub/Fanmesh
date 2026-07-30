@@ -42,18 +42,21 @@ test("Meta connection summaries expose aggregate assets without credentials or l
           id: "ig-1",
           username: "artist",
           followers: 8000,
-          recentMedia: [{ id: "media-1", caption: "New release", permalink: "https://www.instagram.com/reel/example/", likes: 80, comments: 20, interactions: 100 }],
+          recentMedia: [{ id: "media-1", caption: "New release", permalink: "https://www.instagram.com/reel/example/", likes: 80, comments: 20, interactions: 100, views: 1200, reach: 900, saves: 25, shares: 30, totalInteractions: 155, engagementRate: 17.22 }],
         }],
         adAccounts: [{ id: "act_1", name: "Release Ads", currency: "USD", insights30d: { spend: 125.5, impressions: 50000, reach: 31000, clicks: 900, leads: 42 } }],
         leadForms: [{ id: "form-1", pageId: "page-1", name: "Early access", status: "active", leadCount: 43 }],
         adSummary30d: { currency: "USD", spend: 125.5, impressions: 50000, reach: 31000, clicks: 900, leads: 42 },
         syncIssues: [],
       },
-      metrics: { totalFollowers: 20000, pages: 1, instagramAccounts: 1, adAccounts: 1, leadForms: 1, knownLeads: 43 },
+      metrics: { totalFollowers: 20000, pages: 1, instagramAccounts: 1, adAccounts: 1, leadForms: 1, knownLeads: 43, averageMetaReach: 900, medianMetaReach: 900, metaEngagementRate: 17.22, recentMediaReach: 900, recentMediaViews: 1200 },
     },
   });
   assert.equal(state.account.followers, 20000);
   assert.equal(state.account.instagramAccounts[0].recentMedia[0].interactions, 100);
+  assert.equal(state.account.instagramAccounts[0].recentMedia[0].views, 1200);
+  assert.equal(state.account.instagramAccounts[0].recentMedia[0].totalInteractions, 155);
+  assert.equal(state.account.averageMetaReach, 900);
   assert.equal(state.account.adSummary30d.spend, 125.5);
   assert.equal(state.account.leadForms[0].leadCount, 43);
   assert.equal(JSON.stringify(state).includes("credentials"), false);

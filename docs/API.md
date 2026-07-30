@@ -1,4 +1,4 @@
-# FanMesh API v0.3
+# FanMesh API v0.7
 
 The prototype serves JSON under `/api`. Responses use `{ "data": ... }` for successful resources and `{ "error": { "message": ... } }` for errors. When Supabase is configured, workspace endpoints require the secure creator session cookie and PostgreSQL row-level security isolates every workspace. When Supabase is unconfigured, dashboard reads use clearly labeled demo data.
 
@@ -64,6 +64,14 @@ Accepts `{ "source": "meta_ads", "rows": [...] }` and validates up to 1,000 firs
 ### `POST /api/v1/imports/leads/commit`
 
 Requires a creator session and accepts the same source and rows plus `"confirmedAuthorized": true`. The server revalidates the full upload, upserts deduplicated fan records, merges earlier source provenance and channel signals, writes new consent events, and records an import run. Repeating an identical import does not duplicate the matching consent event.
+
+### `POST /api/v1/oauth/meta/leads/preview`
+
+Requires a creator session and a connected Meta account with `leads_retrieval`. Accepts selected authorized `formIds`, `consentChannels`, `confirmedAuthorized: true`, and `confirmedConsent: true`. FanMesh fetches up to 100 recent submissions server-side and returns only validation counts, invalid reasons, and form metadata. Lead names, emails, phone numbers, platform tokens, and normalized rows are not returned to browser JavaScript.
+
+### `POST /api/v1/oauth/meta/leads/commit`
+
+Accepts the same confirmation payload, re-fetches the selected forms, revalidates every submission, and commits only valid consented contacts. Each record stores deterministic deduplication keys plus `meta_instant_form:<form-id>:creator_attested` provenance. This creator attestation is appropriate only when the selected form disclosure genuinely permits the chosen email or SMS use.
 
 ### `POST /api/v1/experiments/social`
 

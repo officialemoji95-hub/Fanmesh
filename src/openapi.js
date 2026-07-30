@@ -2,7 +2,7 @@ export const openApiDocument = {
   openapi: "3.1.0",
   info: {
     title: "FanMesh API",
-    version: "0.6.0",
+    version: "0.7.0",
     description: "Audience intelligence API for consented fan relationships.",
   },
   servers: [{ url: "/api/v1" }],
@@ -100,6 +100,31 @@ export const openApiDocument = {
         security: [{ creatorSession: [] }],
         parameters: [{ name: "provider", in: "path", required: true, schema: { type: "string" } }],
         responses: { 200: { description: "Connection revoked" } },
+      },
+    },
+    "/oauth/meta/leads/preview": {
+      post: {
+        summary: "Fetch and validate selected authorized Meta Instant Form submissions without returning contact fields",
+        security: [{ creatorSession: [] }],
+        requestBody: { required: true, content: { "application/json": { schema: {
+          type: "object",
+          required: ["formIds", "consentChannels", "confirmedAuthorized", "confirmedConsent"],
+          properties: {
+            formIds: { type: "array", maxItems: 10, items: { type: "string" } },
+            consentChannels: { type: "array", items: { type: "string", enum: ["email", "sms"] } },
+            confirmedAuthorized: { type: "boolean", const: true },
+            confirmedConsent: { type: "boolean", const: true },
+          },
+        } } } },
+        responses: { 200: { description: "Safe validation summary with no lead contact fields" }, 400: { description: "Consent confirmation or form selection required" }, 403: { description: "Meta lead permission or asset access missing" } },
+      },
+    },
+    "/oauth/meta/leads/commit": {
+      post: {
+        summary: "Re-fetch, revalidate, deduplicate, and persist selected consented Meta lead submissions",
+        security: [{ creatorSession: [] }],
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["formIds", "consentChannels", "confirmedAuthorized", "confirmedConsent"] } } } },
+        responses: { 201: { description: "Meta lead import committed with consent provenance" }, 400: { description: "No valid consented records" }, 403: { description: "Meta lead permission or asset access missing" } },
       },
     },
     "/score": {

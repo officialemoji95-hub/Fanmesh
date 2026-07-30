@@ -11,7 +11,7 @@ import { openApiDocument } from "./openapi.js";
 import { getConnectionCatalog, planSocialExperiment, previewLeadImport } from "./social.js";
 import { scoreAudience, scoreFan } from "./scoring.js";
 
-const APP_VERSION = "0.6.0";
+const APP_VERSION = "0.7.0";
 const port = Number(process.env.PORT || 3000);
 const publicDirectory = fileURLToPath(new URL("../public", import.meta.url));
 const maxBodyBytes = 2 * 1024 * 1024;
@@ -109,6 +109,17 @@ async function serveStatic(pathname, response) {
 function publicSession(session) {
   const { accessToken, ...data } = session.data;
   return { data, cookies: session.cookies };
+}
+
+function publicMetaLeadPreview(batch, preview) {
+  return {
+    source: batch.source,
+    forms: batch.forms,
+    fetchedAt: batch.fetchedAt,
+    limit: batch.limit,
+    invalid: preview.invalid.slice(0, 20),
+    summary: preview.summary,
+  };
 }
 
 export function createRequestHandler({
@@ -297,6 +308,40 @@ export function createRequestHandler({
         } catch (error) {
           return sendError(response, error);
         }
+      }
+    }
+
+    if (request.method === "POST" && pathname === "/api/v1/oauth/meta/leads/preview") {
+      try {
+        const session = await authenticatedSession(request);
+        const batch = await oauthService.fetchMetaLeadImport(session.data, await readJson(request));
+        const preview = previewLeadImport(batch);
+        return sendJson(response, 200, {
+          data: publicMetaLeadPreview(batch, preview),
+          meta: { persisted: false, contactFieldsReturned: false },
+        }, cookieHeaders(session.cookies));
+      } catch (error) {
+        return sendError(response, error);
+      }
+    }
+
+    if (request.method === "POST" && pathname === "/api/v1/oauth/meta/leads/commit") {
+      try {
+        const session = await authenticatedSession(request);
+        const batch = await oauthService.fetchMetaLeadImport(session.data, await readJson(request));
+        const preview = previewLeadImport(batch);
+        if (preview.summary.valid === 0) {
+          const error = new Error("No valid consented Meta lead records are available to commit");
+          error.statusCode = 400;
+          throw error;
+        }
+        const saved = await workspaceStore.commitLeadImport(session.data.user, session.data.accessToken, preview);
+        return sendJson(response, 201, {
+          data: { ...saved, forms: batch.forms, fetchedAt: batch.fetchedAt },
+          meta: { persisted: true },
+        }, cookieHeaders(session.cookies));
+      } catch (error) {
+        return sendError(response, error);
       }
     }
 

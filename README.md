@@ -17,7 +17,8 @@ This repository contains a deployable proof of concept. Without Supabase configu
 - Official Meta, TikTok, Snapchat, X, and Threads OAuth connection flows
 - Signed OAuth state, X PKCE, server-side code exchange, and encrypted token storage
 - Authorized creator/business account discovery, aggregate metrics, manual sync, and disconnect
-- Meta Page and Instagram professional discovery, recent organic media interactions, 30-day ad-account results, lead-form inventory, and actionable permission gaps
+- Meta Page and Instagram professional discovery, per-post views/reach/interaction health, 30-day ad-account results, lead-form inventory, and actionable permission gaps
+- Server-side Meta Instant Form lead preview and consent-confirmed import with no contact fields returned in the preview response
 - TikTok latest-public-post sync with explainable average views, median views, and engagement-per-view metrics
 - Consent-checked CSV import with preview, deterministic identity keys, deduplication, provenance, and private-workspace persistence
 - Measured social distribution experiment planner with holdout cohorts
@@ -85,7 +86,7 @@ Every score includes its component points and strongest signals. Sensitive trait
 
 ## The production direction
 
-Accounts, private workspaces, consented audience imports, and the multi-provider OAuth foundation are implemented. Meta now inventories authorized Pages, Instagram professional media, ad-account performance, and Instant Forms without copying lead contact fields. The next provider milestone is webhook-backed Meta lead sync with explicit consent-field mapping. See [docs/OAUTH-CONNECTIONS.md](docs/OAUTH-CONNECTIONS.md), [docs/SOCIAL-PHASE-1.md](docs/SOCIAL-PHASE-1.md), [docs/AUDIENCE-IMPORT.md](docs/AUDIENCE-IMPORT.md), [docs/AUTH-AND-SUPABASE.md](docs/AUTH-AND-SUPABASE.md), [docs/PRODUCT.md](docs/PRODUCT.md), [docs/API.md](docs/API.md), and [docs/SECURITY.md](docs/SECURITY.md).
+Accounts, private workspaces, consented audience imports, and the multi-provider OAuth foundation are implemented. Meta now measures authorized Instagram post health and can pull up to 100 submissions from selected Instant Forms after the creator confirms the form disclosure and permitted channels. The next Meta milestone is signed webhook delivery for new leads plus form-specific consent-field rules. See [docs/OAUTH-CONNECTIONS.md](docs/OAUTH-CONNECTIONS.md), [docs/SOCIAL-PHASE-1.md](docs/SOCIAL-PHASE-1.md), [docs/AUDIENCE-IMPORT.md](docs/AUDIENCE-IMPORT.md), [docs/AUTH-AND-SUPABASE.md](docs/AUTH-AND-SUPABASE.md), [docs/PRODUCT.md](docs/PRODUCT.md), [docs/API.md](docs/API.md), and [docs/SECURITY.md](docs/SECURITY.md).
 
 ## Non-goals
 

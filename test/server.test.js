@@ -33,7 +33,7 @@ async function dispatch({ method = "GET", url = "/", body = "", handler = handle
 test("health endpoint reports an operational service", async () => {
   const response = await dispatch({ url: "/api/health" });
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.6.0", database: "demo" });
+  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.7.0", database: "demo" });
 });
 
 test("public legal pages explain FanMesh data and platform rules", async () => {
@@ -207,6 +207,92 @@ test("lead preview endpoint returns consent validation results", async () => {
   const body = response.json();
   assert.equal(response.statusCode, 200);
   assert.equal(body.data.summary.valid, 1);
+});
+
+test("Meta lead preview validates server-fetched contacts without returning contact fields", async () => {
+  const handler = createRequestHandler({
+    authService: {
+      config: { configured: true },
+      async session() {
+        return { data: { authenticated: true, accessToken: "token", user: { id: "user-1" } }, cookies: [] };
+      },
+    },
+    workspaceStore: {},
+    oauthService: {
+      catalog() { return []; },
+      async fetchMetaLeadImport(session, input) {
+        assert.equal(session.user.id, "user-1");
+        assert.equal(input.confirmedConsent, true);
+        return {
+          source: "meta_ads",
+          forms: [{ id: "form-1", name: "Early access", pageId: "page-1" }],
+          fetchedAt: "2026-07-30T10:00:00.000Z",
+          limit: 100,
+          rows: [{
+            name: "Private Fan",
+            email: "private@example.com",
+            source: "meta_ads",
+            sourceId: "lead-1",
+            consent: true,
+            consentAt: "2026-07-30T09:00:00.000Z",
+            consentSource: "meta_instant_form:form-1:creator_attested",
+            consentChannels: ["email"],
+          }],
+        };
+      },
+    },
+  });
+  const response = await dispatch({
+    method: "POST",
+    url: "/api/v1/oauth/meta/leads/preview",
+    body: JSON.stringify({ formIds: ["form-1"], consentChannels: ["email"], confirmedAuthorized: true, confirmedConsent: true }),
+    handler,
+  });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json().data.summary.valid, 1);
+  assert.equal(response.json().meta.contactFieldsReturned, false);
+  assert.equal(Buffer.concat(response.chunks).includes("private@example.com"), false);
+});
+
+test("Meta lead commit revalidates fetched submissions and persists consent provenance", async () => {
+  let persistedPreview;
+  const handler = createRequestHandler({
+    authService: {
+      config: { configured: true },
+      async session() {
+        return { data: { authenticated: true, accessToken: "token", user: { id: "user-1" } }, cookies: [] };
+      },
+    },
+    workspaceStore: {
+      async commitLeadImport(user, token, preview) {
+        assert.equal(user.id, "user-1");
+        assert.equal(token, "token");
+        persistedPreview = preview;
+        return { id: "run-meta-1", accepted: 1, rejected: 0, created: 1, updated: 0, consentEventsAdded: 1, status: "completed" };
+      },
+    },
+    oauthService: {
+      catalog() { return []; },
+      async fetchMetaLeadImport() {
+        return {
+          source: "meta_ads",
+          forms: [{ id: "form-1", name: "Early access", pageId: "page-1" }],
+          fetchedAt: "2026-07-30T10:00:00.000Z",
+          limit: 100,
+          rows: [{ email: "fan@example.com", source: "meta_ads", sourceId: "lead-1", consent: true, consentAt: "2026-07-30T09:00:00.000Z", consentSource: "meta_instant_form:form-1:creator_attested", consentChannels: ["email"] }],
+        };
+      },
+    },
+  });
+  const response = await dispatch({
+    method: "POST",
+    url: "/api/v1/oauth/meta/leads/commit",
+    body: JSON.stringify({ formIds: ["form-1"], consentChannels: ["email"], confirmedAuthorized: true, confirmedConsent: true }),
+    handler,
+  });
+  assert.equal(response.statusCode, 201);
+  assert.equal(response.json().meta.persisted, true);
+  assert.equal(persistedPreview.valid[0].consent.source, "meta_instant_form:form-1:creator_attested");
 });
 
 test("lead commit requires an explicit authorized-data confirmation", async () => {

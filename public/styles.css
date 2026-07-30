@@ -134,7 +134,7 @@ h2 { font-size: 18px; }
 .meta-ad-strip { margin-top: 7px; display: grid; grid-template-columns: repeat(5, 1fr); gap: 7px; }
 .meta-ad-strip strong { font-size: 10px; }
 .meta-media-list { margin-top: 12px; display: grid; gap: 5px; }
-.meta-media-row { padding: 8px 9px; display: grid; grid-template-columns: minmax(180px, 1.5fr) repeat(2, minmax(75px, .5fr)); align-items: center; gap: 8px; border: 1px solid #e4e9ec; border-radius: 7px; background: #fff; }
+.meta-media-row { padding: 8px 9px; display: grid; grid-template-columns: minmax(180px, 1.5fr) repeat(4, minmax(65px, .45fr)); align-items: center; gap: 8px; border: 1px solid #e4e9ec; border-radius: 7px; background: #fff; }
 .meta-media-title { min-width: 0; display: grid; gap: 3px; }
 .meta-media-title a, .meta-media-title strong { overflow: hidden; color: #3d3c43; font-size: 8px; font-weight: 700; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
 .meta-media-title a:hover { color: var(--purple); }
@@ -144,7 +144,21 @@ h2 { font-size: 18px; }
 .platform-empty { min-height: 0 !important; margin: 0 !important; padding: 12px; border-radius: 7px; background: #fff; font-size: 8px !important; }
 .meta-sync-issues { margin-top: 10px; padding: 10px 12px; border: 1px solid #edd9ad; border-radius: 8px; background: #fff9ec; color: #79673c; font-size: 8px; }
 .meta-sync-issues ul { margin: 5px 0 0; padding-left: 14px; line-height: 1.6; }
+.meta-sync-issues .text-link { margin-top: 7px; display: inline-flex; color: var(--purple); font-weight: 700; }
 .platform-method { min-height: 0 !important; margin: 10px 0 0 !important; color: #89898f; font-size: 7px !important; }
+.meta-lead-import { margin-top: 14px; padding: 16px; display: grid; grid-template-columns: .8fr 1.2fr; gap: 18px; border: 1px solid #d8eadf; border-radius: 11px; background: linear-gradient(140deg, #f1faf6, #fbfaf6 65%); }
+.meta-lead-import-copy h3 { margin-top: 3px; font-size: 15px; }
+.meta-lead-import-copy > p:not(.eyebrow) { margin-top: 7px; color: #7f8581; font-size: 8px; line-height: 1.55; }
+#meta-lead-import-form { display: grid; gap: 9px; }
+#meta-lead-import-form fieldset { min-width: 0; margin: 0; padding: 9px; display: grid; gap: 6px; border: 1px solid #dce7df; border-radius: 8px; background: rgba(255,255,255,.7); }
+#meta-lead-import-form legend { padding: 0 4px; color: #798079; font-size: 8px; font-weight: 700; }
+.meta-form-option { display: flex; align-items: flex-start; gap: 7px; color: #686d69; font-size: 8px; }
+.meta-form-option input, .meta-lead-channels input { accent-color: var(--green); }
+.meta-form-option span { display: grid; gap: 2px; }
+.meta-form-option small { color: #919792; font-size: 7px; }
+#meta-lead-import-form .meta-lead-channels { display: flex; flex-wrap: wrap; gap: 7px 15px; }
+.meta-lead-channels .check { display: inline-flex; align-items: center; gap: 4px; color: #717771; font-size: 8px; }
+.meta-lead-actions { display: flex; flex-wrap: wrap; gap: 7px; }
 .tiktok-performance { margin-top: 14px; padding: 16px; border: 1px solid #dad7e7; border-radius: 11px; background: linear-gradient(140deg, #f8f7ff, #fbfaf6 62%); }
 .tiktok-performance-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .tiktok-performance-heading h3 { margin-top: 3px; font-size: 15px; }
@@ -372,12 +386,14 @@ body.auth-open { overflow: hidden; }
   .top-actions .secondary { display: none; }
   .top-actions .button { padding: 0 10px; font-size: 10px; }
   .notice { align-items: flex-start; }
-  .metrics, .dashboard-grid, .campaign-grid, .social-planner, .import-workbench { grid-template-columns: 1fr; }
+  .metrics, .dashboard-grid, .campaign-grid, .social-planner, .import-workbench, .meta-lead-import { grid-template-columns: 1fr; }
   .tiktok-performance-metrics, .platform-performance-metrics { grid-template-columns: repeat(2, 1fr); }
   .meta-ad-strip { grid-template-columns: repeat(2, 1fr); }
   .meta-ad-strip > span:last-child { grid-column: 1 / -1; }
   .tiktok-video-row { grid-template-columns: minmax(130px, 1.3fr) repeat(2, minmax(55px, .5fr)); }
   .tiktok-video-row > span:nth-of-type(n+3) { display: none; }
+  .meta-media-row { grid-template-columns: minmax(130px, 1.3fr) repeat(2, minmax(55px, .5fr)); }
+  .meta-media-row > span:nth-of-type(n+3) { display: none; }
   .source-grid { grid-template-columns: repeat(2, 1fr); }
   .recommendation-list { grid-template-columns: 1fr; }
   .table-heading { align-items: flex-start; }
