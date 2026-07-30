@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="FanMesh unifies consented fan relationships and turns them into useful audience intelligence.">
     <title>FanMesh — Own the relationship</title>
-    <link rel="stylesheet" href="/styles.css?v=0.9.0">
+    <link rel="stylesheet" href="/styles.css?v=0.10.0">
   </head>
   <body>
     <section class="auth-gate" id="auth-gate" aria-labelledby="auth-title" hidden>
@@ -65,7 +65,7 @@
           <div class="top-actions">
             <span class="demo-pill" id="data-mode-pill"><i></i> Checking data</span>
             <button class="button secondary" data-scroll="connections">＋ Connect source</button>
-            <button class="button primary" data-scroll="campaign">Plan activation ↗</button>
+            <button class="button primary" data-scroll="organic-pulse">Start organic pulse ↗</button>
           </div>
         </header>
 
@@ -310,6 +310,23 @@
           <div class="table-footer"><span id="audience-mode">Loading workspace records</span><button data-toast="Pagination will activate as your audience grows.">View all audience →</button></div>
         </section>
 
+        <section class="panel organic-pulse" id="organic-pulse">
+          <div class="panel-heading">
+            <div><p class="eyebrow">Organic Pulse</p><h2>Give an under-reached post another honest chance.</h2></div>
+            <span class="status good" id="organic-pulse-status">Synced posts</span>
+          </div>
+          <p class="panel-copy">FanMesh ranks recent Instagram and TikTok posts using their real benchmark gap, follower-coverage gap, recency, and engagement. Start a pulse to save the organic baseline, prepare native follow-up actions, and create a direct-alert cohort before any ads begin.</p>
+          <div class="organic-summary" id="organic-summary">
+            <span><small>Posts analyzed</small><strong>—</strong></span>
+            <span><small>High priority</small><strong>—</strong></span>
+            <span><small>Platforms</small><strong>—</strong></span>
+          </div>
+          <div class="organic-post-list" id="organic-post-list" aria-live="polite">
+            <div class="skeleton"></div><div class="skeleton"></div>
+          </div>
+          <p class="organic-method" id="organic-method">Waiting for connected-platform post signals.</p>
+        </section>
+
         <section class="campaign-grid" id="campaign">
           <article class="panel campaign-builder">
             <div class="panel-heading">
@@ -327,7 +344,7 @@
                 <label class="check"><input type="checkbox" name="channels" value="email" checked> Email</label>
                 <label class="check"><input type="checkbox" name="channels" value="sms"> SMS</label>
               </fieldset>
-              <label>Measurement holdout<select name="holdoutPercent"><option value="0">No holdout yet</option><option value="5">5% holdout</option><option value="10">10% holdout</option></select></label>
+              <label>Measurement holdout<select name="holdoutPercent"><option value="0">No holdout yet</option><option value="5">5% holdout</option><option value="10" selected>10% holdout</option></select></label>
               <label class="activation-confirm"><input name="confirmedOwnedContent" type="checkbox" required> I control this content or destination.</label>
               <button class="button primary" type="submit">Prepare fan alert ↗</button>
             </form>
@@ -353,6 +370,6 @@
       </main>
     </div>
     <div class="toast" role="status" aria-live="polite"></div>
-    <script src="/app.js?v=0.9.0" type="module"></script>
+    <script src="/app.js?v=0.10.0" type="module"></script>
   </body>
 </html>

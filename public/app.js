@@ -8,6 +8,7 @@ let authMode = "signin";
 let pendingImport = null;
 let pendingMetaLeadImport = null;
 let pendingIdentityImport = null;
+let organicPostRecords = [];
 
 function showToast(message) {
   clearTimeout(toastTimer);
@@ -460,6 +461,43 @@ function renderMetaLeadImport(catalog) {
   `).join("")}`;
 }
 
+function renderOrganicPulse(organic = {}) {
+  const list = document.querySelector("#organic-post-list");
+  const summary = document.querySelector("#organic-summary");
+  const status = document.querySelector("#organic-pulse-status");
+  const method = document.querySelector("#organic-method");
+  organicPostRecords = Array.isArray(organic.posts) ? organic.posts : [];
+  const details = organic.summary || {};
+  summary.innerHTML = `
+    <span><small>Posts analyzed</small><strong>${numberFormatter.format(details.postsAnalyzed || 0)}</strong></span>
+    <span><small>High priority</small><strong>${numberFormatter.format(details.highPriority || 0)}</strong></span>
+    <span><small>Platforms</small><strong>${numberFormatter.format((details.platforms || []).length)}</strong></span>`;
+  status.className = `status ${organicPostRecords.length ? "good" : "warning"}`;
+  status.textContent = organicPostRecords.length ? `${organicPostRecords.length} recent posts` : "Sync needed";
+  method.textContent = organic.methodology || "Sync Instagram or TikTok to compare recent organic post performance.";
+  if (!organicPostRecords.length) {
+    list.innerHTML = `<article class="organic-empty"><strong>No eligible recent posts yet</strong><p>Connect or sync Instagram and TikTok above. FanMesh needs a public post URL and authorized performance metrics before it can capture an organic baseline.</p><button class="button secondary" type="button" data-scroll="connections">Review connections ↑</button></article>`;
+    return;
+  }
+  list.innerHTML = organicPostRecords.slice(0, 6).map((post) => `
+    <article class="organic-post ${escapeHtml(post.priority)}">
+      <div class="organic-post-heading">
+        <span class="organic-platform ${escapeHtml(post.platform)}">${escapeHtml(post.platform)}</span>
+        <span class="organic-score"><b>${numberFormatter.format(post.opportunityScore)}</b>/100 opportunity</span>
+      </div>
+      <a class="organic-title" href="${escapeHtml(post.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(post.title)} ↗</a>
+      <p class="organic-account">${post.account ? `@${escapeHtml(post.account.replace(/^@/, ""))} · ` : ""}${escapeHtml(shortDate(post.publishedAt))} · ${escapeHtml(post.recoveryWindow)}</p>
+      <div class="organic-metrics">
+        <span><small>${escapeHtml(post.reachMetric)}</small><strong>${numberFormatter.format(post.currentReach)}</strong></span>
+        <span><small>${escapeHtml(post.benchmarkLabel)}</small><strong>${numberFormatter.format(post.benchmark)}</strong></span>
+        <span><small>Follower coverage</small><strong>${percent(post.followerCoverageRate)}</strong></span>
+        <span><small>Interactions</small><strong>${numberFormatter.format(post.interactions)}</strong></span>
+      </div>
+      <p class="organic-reason">${escapeHtml(post.reasons?.join(" · ") || "Keep measuring this post organically.")}</p>
+      <button class="button primary organic-activate" type="button" data-organic-activate="${escapeHtml(post.key)}">Start organic pulse ↗</button>
+    </article>`).join("");
+}
+
 function renderConnections(catalog) {
   const sourceGrid = document.querySelector("#source-grid");
   const sources = catalog.social;
@@ -589,13 +627,14 @@ async function loadDashboard() {
     const response = await fetch("/api/v1/dashboard?limit=20");
     const body = await response.json();
     if (!response.ok) throw new Error(body.error?.message || "Dashboard API unavailable");
-    const { insights, fans, connections, workspace } = body.data;
+    const { insights, fans, connections, organic, workspace } = body.data;
     const meta = body.meta;
     const { snapshot } = insights;
     fanRecords = fans;
     updateDashboardChrome(snapshot, workspace, meta);
     renderRecommendations(insights.recommendations);
     renderConnections(connections);
+    renderOrganicPulse(organic);
     document.querySelector("#cross-platform-count").textContent = numberFormatter.format(
       fanRecords.filter((fan) => fan.channels.length > 1).length,
     );
@@ -679,6 +718,9 @@ document.addEventListener("click", async (event) => {
     showToast(`${copyButton.dataset.copyLabel || "Link"} copied.`);
   }
 
+  const organicButton = event.target.closest("[data-organic-activate]");
+  if (organicButton) await activateOrganicPost(organicButton.dataset.organicActivate, organicButton);
+
   if (event.target.closest(".mobile-menu")) document.querySelector(".sidebar").classList.toggle("open");
   if (event.target.closest(".nav a")) document.querySelector(".sidebar").classList.remove("open");
 });
@@ -695,6 +737,8 @@ function renderFanActivation(plan) {
   const readiness = plan.readiness === "audience_ready" ? "Audience ready" : "Capture needed";
   const links = Object.entries(plan.links || {});
   const delivery = Object.entries(plan.delivery || {});
+  const baseline = plan.organicBaseline;
+  const nativeActions = Array.isArray(plan.nativeActions) ? plan.nativeActions : [];
   result.className = "activation-result";
   result.innerHTML = `
     <div class="activation-heading">
@@ -708,6 +752,10 @@ function renderFanActivation(plan) {
       <span><small>Alert cohort</small><strong>${numberFormatter.format(plan.audience.reachableNow)}</strong></span>
     </div>
     <p class="activation-note">${escapeHtml(plan.audience.explanation)} ${numberFormatter.format(plan.audience.holdout)} fan${plan.audience.holdout === 1 ? "" : "s"} reserved for measurement.</p>
+    ${baseline ? `<div class="organic-baseline">
+      <div><p class="eyebrow">Organic baseline saved</p><strong>${numberFormatter.format(baseline.currentReach)} ${escapeHtml(baseline.reachMetric)}</strong><span>${numberFormatter.format(baseline.interactions)} interactions · ${percent(baseline.followerCoverageRate)} follower coverage</span></div>
+      <p>${escapeHtml(baseline.note)}</p>
+    </div>` : ""}
     <div class="activation-links">
       ${links.map(([channel, link]) => `
         <div class="activation-link">
@@ -727,7 +775,45 @@ function renderFanActivation(plan) {
         <div class="activation-step"><b>0${escapeHtml(step.order)}</b><strong>${escapeHtml(step.title)}</strong><p>${escapeHtml(step.detail)}</p></div>
       `).join("")}
     </div>
+    ${nativeActions.length ? `<div class="native-actions"><strong>Do these native actions now</strong><ol>${nativeActions.map((action) => `<li>${escapeHtml(action)}</li>`).join("")}</ol></div>` : ""}
     <p class="guardrail"><strong>Delivery truth:</strong> This activation is saved, but no email or SMS has been sent. Connect a permitted provider before launch.</p>`;
+}
+
+async function activateOrganicPost(postKey, button) {
+  const post = organicPostRecords.find((item) => item.key === postKey);
+  if (!post) return;
+  const form = document.querySelector("#campaign-form");
+  const channels = [...form.querySelectorAll('input[name="channels"]:checked')].map((field) => field.value);
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = "Saving organic baseline…";
+  try {
+    const response = await fetch("/api/v1/organic/activate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        postKey,
+        channels: channels.length ? channels : ["email"],
+        holdoutPercent: form.elements.holdoutPercent.value || 10,
+        objective: "evergreen",
+      }),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error?.message || "Could not start the organic pulse");
+    form.elements.title.value = post.title;
+    form.elements.contentUrl.value = post.url;
+    form.elements.objective.value = "evergreen";
+    form.elements.message.value = `${post.title} is worth another look:`.slice(0, 280);
+    form.elements.confirmedOwnedContent.checked = true;
+    renderFanActivation(body.data);
+    document.querySelector("#campaign").scrollIntoView({ behavior: "smooth", block: "start" });
+    showToast("Organic baseline and activation saved. Start with the native actions shown.");
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
 }
 
 document.querySelector("#campaign-form").addEventListener("submit", async (event) => {

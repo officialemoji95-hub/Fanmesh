@@ -2,7 +2,7 @@ export const openApiDocument = {
   openapi: "3.1.0",
   info: {
     title: "FanMesh API",
-    version: "0.9.0",
+    version: "0.10.0",
     description: "Audience intelligence API for consented fan relationships.",
   },
   servers: [{ url: "/api/v1" }],
@@ -165,6 +165,41 @@ export const openApiDocument = {
           201: { description: "Activation draft saved with eligibility counts, attribution links, and delivery readiness" },
           400: { description: "Invalid content, channel, or ownership confirmation" },
           401: { description: "Sign-in required" },
+        },
+      },
+    },
+    "/organic/posts": {
+      get: {
+        summary: "Rank recent authorized Instagram and TikTok posts for an organic follow-up",
+        security: [{ creatorSession: [] }],
+        responses: {
+          200: { description: "Recent posts with explainable opportunity components and current organic baselines" },
+          401: { description: "Sign-in required" },
+        },
+      },
+    },
+    "/organic/activate": {
+      post: {
+        summary: "Capture a recent post's organic baseline and save a follow-up activation",
+        security: [{ creatorSession: [] }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: {
+            type: "object",
+            required: ["postKey"],
+            properties: {
+              postKey: { type: "string", description: "Opaque key returned by GET /organic/posts" },
+              objective: { type: "string", enum: ["release", "sales", "community", "evergreen"] },
+              message: { type: "string", maxLength: 280 },
+              channels: { type: "array", items: { type: "string", enum: ["email", "sms"] } },
+              holdoutPercent: { type: "number", minimum: 0, maximum: 25 },
+            },
+          } } },
+        },
+        responses: {
+          201: { description: "Organic baseline and activation saved; no messages sent" },
+          404: { description: "Post not present in the latest authorized sync" },
+          409: { description: "Instagram or TikTok connection required" },
         },
       },
     },

@@ -33,7 +33,7 @@ async function dispatch({ method = "GET", url = "/", body = "", handler = handle
 test("health endpoint reports an operational service", async () => {
   const response = await dispatch({ url: "/api/health" });
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.9.0", database: "demo" });
+  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.10.0", database: "demo" });
 });
 
 test("public legal pages explain FanMesh data and platform rules", async () => {
@@ -241,6 +241,88 @@ test("recent activations are empty but explicit in demo mode", async () => {
   assert.equal(response.statusCode, 200);
   assert.deepEqual(response.json().data, []);
   assert.equal(response.json().meta.persisted, false);
+});
+
+test("organic post queue is explicit when no live accounts are configured", async () => {
+  const response = await dispatch({ url: "/api/v1/organic/posts" });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json().data.summary.postsAnalyzed, 0);
+  assert.equal(response.json().meta.synced, false);
+});
+
+test("organic activation uses a recent authorized post and persists its pre-ad baseline", async () => {
+  let savedPlan;
+  const connectionStatuses = {
+    tiktok: {
+      status: "connected",
+      account: {
+        name: "Artist",
+        username: "artist",
+        followers: 118000,
+        medianViews: 900,
+        recentVideos: [{
+          id: "video-1",
+          title: "Recent video",
+          shareUrl: "https://www.tiktok.com/@artist/video/1",
+          createdAt: new Date().toISOString(),
+          views: 127,
+          likes: 10,
+          comments: 2,
+          shares: 1,
+        }],
+      },
+    },
+  };
+  const handler = createRequestHandler({
+    authService: {
+      config: { configured: true },
+      async session() {
+        return {
+          data: { authenticated: true, accessToken: "token", user: { id: "user-1" } },
+          cookies: ["session=refreshed"],
+        };
+      },
+    },
+    workspaceStore: {
+      async getDashboard() {
+        return { connectionStatuses, fans: [], snapshot: {}, workspace: { id: "workspace-1" } };
+      },
+      async getActivationEligibility() {
+        return {
+          identifiedFans: 5000,
+          directConnections: 200,
+          platformOnly: 4800,
+          channels: { email: 180, sms: 40 },
+          platforms: { instagram: 0, facebook: 0, tiktok: 5000, youtube: 0 },
+        };
+      },
+      async saveExperiment(user, token, plan) {
+        assert.equal(user.id, "user-1");
+        assert.equal(token, "token");
+        savedPlan = plan;
+        return { ...plan, databaseId: "organic-1", status: "saved" };
+      },
+    },
+    oauthService: { catalog() { return []; } },
+  });
+  const queueResponse = await dispatch({ url: "/api/v1/organic/posts", handler });
+  const post = queueResponse.json().data.posts[0];
+  assert.equal(post.platform, "tiktok");
+
+  const response = await dispatch({
+    method: "POST",
+    url: "/api/v1/organic/activate",
+    handler,
+    body: JSON.stringify({ postKey: post.key, channels: ["email"], holdoutPercent: 10 }),
+  });
+  const body = response.json();
+  assert.equal(response.statusCode, 201);
+  assert.equal(body.meta.messagesSent, 0);
+  assert.equal(body.meta.organicBaselineCaptured, true);
+  assert.equal(body.data.databaseId, "organic-1");
+  assert.equal(savedPlan.mode, "organic_pulse");
+  assert.equal(savedPlan.organicBaseline.currentReach, 127);
+  assert.equal(savedPlan.organicBaseline.paidIncluded, false);
 });
 
 test("connections endpoint exposes authorized source contracts", async () => {

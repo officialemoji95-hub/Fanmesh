@@ -65,6 +65,14 @@ Requires a creator session in account mode. Accepts a creator-controlled public 
 
 Returns recent saved `fan_activation_v1` drafts for the signed-in workspace. Contact details are not included.
 
+### `GET /api/v1/organic/posts`
+
+Requires a creator session. Returns up to 20 recent Instagram and TikTok posts from the latest authorized sync, ranked by an explainable organic-recovery opportunity score. Each record includes the current reach/view baseline, recent median benchmark, follower-coverage rate, real interaction rate, score components, and a public platform URL. The score is a prioritization aid, not a delivery prediction.
+
+### `POST /api/v1/organic/activate`
+
+Requires a creator session and a `postKey` returned by `GET /api/v1/organic/posts`. FanMesh re-resolves the key against the server-side authorized connection, captures the pre-ad organic baseline, calculates the exact consented email/SMS cohort and holdout, creates tracked links, saves native follow-up actions, and persists the activation. Preparing the pulse sends no messages and does not interact with followers automatically.
+
 ### `POST /api/v1/imports/leads/preview`
 
 Accepts `{ "source": "meta_ads", "rows": [...] }` and validates up to 1,000 first-party lead records without persisting them. A valid row needs an email or phone, `consent: true`, a parseable `consentAt`, a `consentSource`, and channel-specific consent when both email and phone are present. The response includes normalized records, hashed contact keys, invalid-row reasons, duplicate counts, and source counts. Purchased, scraped, or unconsented lists are not accepted.
