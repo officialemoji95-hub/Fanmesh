@@ -28,6 +28,70 @@ test("new private workspaces start with truthful zero metrics", () => {
   assert.equal(Object.isFrozen(emptyAudienceSnapshot), true);
 });
 
+test("activation eligibility uses exact workspace counts without exposing contacts", async () => {
+  const calls = [];
+  function response(payload, status = 200) {
+    return { ok: status >= 200 && status < 300, status, async text() { return payload === null ? "" : JSON.stringify(payload); } };
+  }
+  function countResponse(total) {
+    return {
+      ok: true,
+      status: 200,
+      headers: { get(name) { return name === "content-range" ? `0-0/${total}` : null; } },
+      async text() { return ""; },
+    };
+  }
+  const store = createWorkspaceStore({
+    environment: { SUPABASE_URL: "https://project.supabase.co", SUPABASE_PUBLISHABLE_KEY: "public-key" },
+    async fetchImpl(url, options = {}) {
+      calls.push({ url, options });
+      if (url.includes("workspace_members")) return response([{ workspace_id: "workspace-1", role: "owner" }]);
+      if (url.includes("/workspaces?")) return response([{ id: "workspace-1", name: "Creator workspace", slug: "creator" }]);
+      if (options.method === "HEAD") {
+        if (url.includes("consented_channels=not.eq")) return countResponse(20);
+        if (url.includes("consented_channels=cs.%7Bemail%7D")) return countResponse(18);
+        if (url.includes("consented_channels=cs.%7Bsms%7D")) return countResponse(7);
+        if (url.includes("channels=cs.%7Binstagram%7D")) return countResponse(70);
+        if (url.includes("channels=cs.%7Bfacebook%7D")) return countResponse(30);
+        if (url.includes("channels=cs.%7Btiktok%7D")) return countResponse(55);
+        if (url.includes("channels=cs.%7Byoutube%7D")) return countResponse(9);
+        return countResponse(100);
+      }
+      throw new Error(`Unexpected request: ${options.method || "GET"} ${url}`);
+    },
+  });
+  const eligibility = await store.getActivationEligibility({ id: "user-1" }, "user-token");
+  assert.equal(eligibility.identifiedFans, 100);
+  assert.equal(eligibility.directConnections, 20);
+  assert.equal(eligibility.platformOnly, 80);
+  assert.deepEqual(eligibility.channels, { email: 18, sms: 7 });
+  assert.deepEqual(eligibility.platforms, { instagram: 70, facebook: 30, tiktok: 55, youtube: 9 });
+  assert.equal(calls.filter((call) => call.options.method === "HEAD").length, 8);
+  assert.equal(calls.some((call) => JSON.stringify(call).includes("email@example.com")), false);
+});
+
+test("recent activation listing returns only fan-alert plans", async () => {
+  function response(payload, status = 200) {
+    return { ok: status >= 200 && status < 300, status, async text() { return payload === null ? "" : JSON.stringify(payload); } };
+  }
+  const store = createWorkspaceStore({
+    environment: { SUPABASE_URL: "https://project.supabase.co", SUPABASE_PUBLISHABLE_KEY: "public-key" },
+    async fetchImpl(url) {
+      if (url.includes("workspace_members")) return response([{ workspace_id: "workspace-1", role: "owner" }]);
+      if (url.includes("/workspaces?")) return response([{ id: "workspace-1", name: "Creator workspace", slug: "creator" }]);
+      if (url.includes("/social_experiments?")) return response([
+        { id: "row-1", status: "draft", created_at: "2026-07-30T10:00:00.000Z", plan: { id: "act_1", kind: "fan_activation_v1", title: "Post" } },
+        { id: "row-2", status: "draft", created_at: "2026-07-29T10:00:00.000Z", plan: { id: "exp_1", kind: "social_experiment" } },
+      ]);
+      throw new Error(`Unexpected request: ${url}`);
+    },
+  });
+  const activations = await store.listActivations({ id: "user-1" }, "user-token", 5);
+  assert.equal(activations.length, 1);
+  assert.equal(activations[0].databaseId, "row-1");
+  assert.equal(activations[0].title, "Post");
+});
+
 test("Meta connection summaries expose aggregate assets without credentials or lead identities", () => {
   const state = publicConnectionState({
     status: "connected",
