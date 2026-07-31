@@ -149,6 +149,31 @@ h2 { font-size: 18px; }
 .snapchat-readiness-actions { margin-top: 11px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .snapchat-readiness-actions code { padding: 7px 9px; overflow-wrap: anywhere; border: 1px solid #e4dda2; border-radius: 6px; background: #fff; color: #5e5a4c; font-size: 7px; }
 .snapchat-readiness-actions .connection-button { margin-top: 0; text-decoration: none; }
+.snapchat-performance { margin-top: 14px; padding: 16px; border: 1px solid #e2ddd0; border-radius: 11px; background: #fffef7; }
+.snapchat-performance-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.snapchat-performance-heading h3 { margin-top: 3px; font-size: 15px; }
+.snapchat-performance-metrics { margin-top: 12px; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 7px; }
+.snapchat-performance-metrics > span, .snapchat-campaign-metrics > span { min-width: 0; padding: 9px; border: 1px solid #e8e2c4; border-radius: 8px; background: rgba(255,255,255,.82); }
+.snapchat-performance-metrics small, .snapchat-performance-metrics strong, .snapchat-campaign-metrics small, .snapchat-campaign-metrics strong { display: block; }
+.snapchat-performance-metrics small, .snapchat-campaign-metrics small { overflow-wrap: anywhere; color: #777366; font-size: 6.5px; font-weight: 700; text-transform: uppercase; }
+.snapchat-performance-metrics strong { margin-top: 3px; font-size: 12px; }
+.snapchat-campaign-list { margin-top: 12px; display: grid; gap: 9px; }
+.snapchat-campaign-row { padding: 12px; border: 1px solid #e5dfc6; border-radius: 9px; background: #fff; }
+.snapchat-campaign-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.snapchat-campaign-heading > div { min-width: 0; }
+.snapchat-campaign-heading strong, .snapchat-campaign-heading small { display: block; }
+.snapchat-campaign-heading strong { overflow-wrap: anywhere; font-size: 10px; }
+.snapchat-campaign-heading small { margin-top: 3px; color: #77756d; font-size: 7px; line-height: 1.45; }
+.snapchat-campaign-metrics { margin-top: 9px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.snapchat-campaign-metrics strong { margin-top: 2px; font-size: 10px; }
+.snapchat-delivery-counts { margin-top: 8px; color: #67675f; font-size: 7px; }
+.snapchat-entity-list { margin-top: 7px; display: flex; align-items: stretch; flex-wrap: wrap; gap: 5px; }
+.snapchat-entity-list > small { align-self: center; min-width: 45px; color: #858177; font-size: 6px; font-weight: 800; text-transform: uppercase; }
+.snapchat-entity-list > span { min-width: 100px; max-width: 220px; padding: 6px 7px; border-radius: 6px; background: #f5f2e8; }
+.snapchat-entity-list b, .snapchat-entity-list small { display: block; overflow-wrap: anywhere; }
+.snapchat-entity-list b { font-size: 7px; }
+.snapchat-entity-list small { margin-top: 2px; color: #858177; font-size: 6px; }
+.snapchat-more { margin-top: 8px; color: #76746c; font-size: 7px; }
 .platform-performance { margin-top: 14px; padding: 16px; border: 1px solid #d7e2ea; border-radius: 11px; background: linear-gradient(140deg, #f3f7ff, #fbfaf6 62%); }
 .platform-performance-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .platform-performance-heading h3 { margin-top: 3px; font-size: 15px; }
@@ -501,6 +526,7 @@ body.auth-open { overflow: hidden; }
   .recommendation footer { margin-top: 4px; }
   .source-grid { grid-template-columns: repeat(3, 1fr); }
   .snapchat-readiness-grid { grid-template-columns: repeat(3, 1fr); }
+  .snapchat-performance-metrics { grid-template-columns: repeat(3, 1fr); }
   .roadmap-grid { grid-template-columns: 1fr; }
   .top-actions .demo-pill { display: none; }
 }
@@ -525,6 +551,9 @@ body.auth-open { overflow: hidden; }
   .meta-media-row > span:nth-of-type(n+3) { display: none; }
   .source-grid { grid-template-columns: repeat(2, 1fr); }
   .snapchat-readiness-grid { grid-template-columns: 1fr; }
+  .snapchat-performance-heading, .snapchat-campaign-heading { align-items: flex-start; flex-direction: column; }
+  .snapchat-performance-metrics { grid-template-columns: repeat(2, 1fr); }
+  .snapchat-campaign-metrics { grid-template-columns: repeat(2, 1fr); }
   .recommendation-list { grid-template-columns: 1fr; }
   .table-heading { align-items: flex-start; }
   .table-actions .search { width: 135px; }
