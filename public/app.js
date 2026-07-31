@@ -9,6 +9,7 @@ let pendingImport = null;
 let pendingMetaLeadImport = null;
 let pendingIdentityImport = null;
 let organicPostRecords = [];
+let pendingOutreachPlan = null;
 
 function showToast(message) {
   clearTimeout(toastTimer);
@@ -494,7 +495,7 @@ function renderOrganicPulse(organic = {}) {
         <span><small>Interactions</small><strong>${numberFormatter.format(post.interactions)}</strong></span>
       </div>
       <p class="organic-reason">${escapeHtml(post.reasons?.join(" · ") || "Keep measuring this post organically.")}</p>
-      <button class="button primary organic-activate" type="button" data-organic-activate="${escapeHtml(post.key)}">Start organic pulse ↗</button>
+      <button class="button primary organic-activate" type="button" data-organic-activate="${escapeHtml(post.key)}">Prepare organic pulse ↗</button>
     </article>`).join("");
 }
 
@@ -683,7 +684,7 @@ async function bootstrapAccount() {
       return;
     }
     showAuthGate(false);
-    await loadDashboard();
+    await Promise.all([loadDashboard(), loadOutreachReadiness()]);
     handleOAuthReturn();
   } catch (error) {
     showAuthGate(true);
@@ -779,6 +780,63 @@ function renderFanActivation(plan) {
     <p class="guardrail"><strong>Delivery truth:</strong> This activation is saved, but no email or SMS has been sent. Connect a permitted provider before launch.</p>`;
 }
 
+async function loadOutreachReadiness() {
+  const badge = document.querySelector("#outreach-readiness");
+  try {
+    const response = await fetch("/api/v1/outreach/readiness");
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error?.message || "Sender check failed");
+    const ready = Object.values(body.data || {}).filter((provider) => provider.configured).length;
+    badge.textContent = ready === 2 ? "Email + SMS ready" : ready === 1 ? "1 sender ready" : "Sender setup needed";
+    badge.className = `status ${ready ? "good" : "warning"}`;
+  } catch {
+    badge.textContent = "Sender check unavailable";
+    badge.className = "status warning";
+  }
+}
+
+function outreachInput(form, { sending = false } = {}) {
+  const data = new FormData(form);
+  return {
+    title: data.get("title"),
+    contentUrl: data.get("contentUrl"),
+    subject: data.get("subject"),
+    message: data.get("message"),
+    channels: data.getAll("channels"),
+    sources: data.getAll("sources"),
+    holdoutPercent: data.get("holdoutPercent"),
+    confirmedOwnedContent: data.get("confirmedOwnedContent") === "on",
+    confirmedAudienceRights: data.get("confirmedAudienceRights") === "on",
+    confirmedSend: sending && data.get("confirmedSend") === "on",
+    campaignId: pendingOutreachPlan?.id,
+  };
+}
+
+function renderLeadOutreach(plan, { launched = false } = {}) {
+  const result = document.querySelector("#campaign-result");
+  const providers = Object.entries(plan.providers || {});
+  const sources = Object.entries(plan.audience?.sources || {}).filter(([, count]) => count > 0);
+  result.className = "activation-result";
+  result.innerHTML = `
+    <div class="activation-heading">
+      <div><p class="eyebrow">${escapeHtml(plan.id)}</p><h3>${escapeHtml(plan.title)}</h3></div>
+      <span class="status ${launched && plan.status !== "failed" ? "good" : plan.launchable ? "good" : "warning"}">${escapeHtml(launched ? plan.status : plan.launchable ? "Ready to launch" : "Setup needed")}</span>
+    </div>
+    <div class="reach-summary">
+      <span><small>Eligible</small><strong>${numberFormatter.format(plan.audience.eligible || 0)}</strong></span>
+      <span><small>Selected</small><strong>${numberFormatter.format(plan.audience.selected || 0)}</strong></span>
+      <span><small>Holdout</small><strong>${numberFormatter.format(plan.audience.heldOut || 0)}</strong></span>
+      <span><small>${launched ? "Sent" : "Suppressed"}</small><strong>${numberFormatter.format(launched ? plan.audience.sent || 0 : plan.audience.suppressed || 0)}</strong></span>
+    </div>
+    <p class="activation-note">${sources.length ? sources.map(([source, count]) => `${escapeHtml(source.replaceAll("_", " "))}: ${numberFormatter.format(count)}`).join(" · ") : "No matching consented leads found in the selected sources."}</p>
+    <div class="provider-grid">
+      ${providers.map(([channel, provider]) => `<article class="provider-card ${provider.configured ? "ready" : ""}"><strong>${escapeHtml(channel)} · ${escapeHtml(provider.provider || "provider")}</strong><span>${escapeHtml(provider.explanation || "Not configured")}</span></article>`).join("")}
+    </div>
+    <div class="activation-links">${Object.entries(plan.links || {}).map(([channel, link]) => `<div class="activation-link"><span>${escapeHtml(channel)}</span><input value="${escapeHtml(link)}" readonly><button type="button" data-copy="${escapeHtml(link)}" data-copy-label="${escapeHtml(channel)} link">Copy link</button></div>`).join("")}</div>
+    <div class="native-actions"><strong>Controls applied</strong><ol>${(plan.guardrails || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ol></div>
+    <p class="guardrail"><strong>Delivery truth:</strong> ${launched ? `${numberFormatter.format(plan.audience.sent || 0)} accepted by the configured provider; ${numberFormatter.format(plan.audience.failed || 0)} failed.` : "This is a preview. Nothing has been sent yet."}</p>`;
+}
+
 async function activateOrganicPost(postKey, button) {
   const post = organicPostRecords.find((item) => item.key === postKey);
   if (!post) return;
@@ -802,7 +860,6 @@ async function activateOrganicPost(postKey, button) {
     if (!response.ok) throw new Error(body.error?.message || "Could not start the organic pulse");
     form.elements.title.value = post.title;
     form.elements.contentUrl.value = post.url;
-    form.elements.objective.value = "evergreen";
     form.elements.message.value = `${post.title} is worth another look:`.slice(0, 280);
     form.elements.confirmedOwnedContent.checked = true;
     renderFanActivation(body.data);
@@ -816,37 +873,68 @@ async function activateOrganicPost(postKey, button) {
   }
 }
 
+document.querySelector("#campaign-form").addEventListener("change", (event) => {
+  if (event.target.name === "confirmedSend") {
+    document.querySelector("#launch-outreach").disabled = !pendingOutreachPlan?.launchable || !event.target.checked;
+    return;
+  }
+  pendingOutreachPlan = null;
+  document.querySelector("#launch-outreach").disabled = true;
+  document.querySelector("#campaign-form").elements.confirmedSend.checked = false;
+});
+
 document.querySelector("#campaign-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const submitButton = event.currentTarget.querySelector("button[type=submit]");
-  const formData = new FormData(event.currentTarget);
-  const input = {
-    title: formData.get("title"),
-    contentUrl: formData.get("contentUrl"),
-    objective: formData.get("objective"),
-    message: formData.get("message"),
-    channels: formData.getAll("channels"),
-    holdoutPercent: formData.get("holdoutPercent"),
-    confirmedOwnedContent: formData.get("confirmedOwnedContent") === "on",
-  };
+  const input = outreachInput(event.currentTarget);
   submitButton.disabled = true;
-  submitButton.textContent = "Calculating real reach…";
+  submitButton.textContent = "Checking consented leads…";
+  pendingOutreachPlan = null;
+  document.querySelector("#launch-outreach").disabled = true;
+  event.currentTarget.elements.confirmedSend.checked = false;
 
   try {
-    const response = await fetch("/api/v1/activations/prepare", {
+    const response = await fetch("/api/v1/outreach/preview", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(input),
     });
     const body = await response.json();
-    if (!response.ok) throw new Error(body.error?.message || "Could not prepare the fan alert");
-    renderFanActivation(body.data);
-    showToast(body.meta?.persisted ? "Fan alert saved to your workspace." : "Demo fan alert prepared.");
+    if (!response.ok) throw new Error(body.error?.message || "Could not preview lead outreach");
+    pendingOutreachPlan = body.data;
+    renderLeadOutreach(body.data);
+    showToast(body.data.launchable ? "Cohort ready. Review and confirm launch." : "Preview ready. Complete the sender setup shown.");
   } catch (error) {
     showToast(error.message);
   } finally {
     submitButton.disabled = false;
-    submitButton.textContent = "Prepare fan alert ↗";
+    submitButton.textContent = "Preview eligible leads ↗";
+  }
+});
+
+document.querySelector("#launch-outreach").addEventListener("click", async (event) => {
+  const form = document.querySelector("#campaign-form");
+  if (!pendingOutreachPlan) return showToast("Preview the cohort again before launch.");
+  const button = event.currentTarget;
+  button.disabled = true;
+  button.textContent = "Sending through providers…";
+  try {
+    const response = await fetch("/api/v1/outreach/send", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(outreachInput(form, { sending: true })),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error?.message || "Could not launch outreach");
+    pendingOutreachPlan = null;
+    form.elements.confirmedSend.checked = false;
+    renderLeadOutreach(body.data, { launched: true });
+    showToast(`${numberFormatter.format(body.meta.messagesSent || 0)} message${body.meta.messagesSent === 1 ? "" : "s"} accepted by the delivery provider.`);
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    button.disabled = true;
+    button.textContent = "Launch outreach";
   }
 });
 

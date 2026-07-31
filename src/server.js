@@ -10,10 +10,11 @@ import { buildInsights, recommendCampaign } from "./insights.js";
 import { createOAuthService } from "./oauth.js";
 import { buildOrganicQueue, prepareOrganicPulse } from "./organic.js";
 import { openApiDocument } from "./openapi.js";
+import { createOutreachService, normalizeOutreachInput, publicOutreachPlan, selectOutreachCohort } from "./outreach.js";
 import { getConnectionCatalog, planSocialExperiment, previewLeadImport, previewPlatformIdentityImport } from "./social.js";
 import { scoreAudience, scoreFan } from "./scoring.js";
 
-const APP_VERSION = "0.10.0";
+const APP_VERSION = "0.11.0";
 const port = Number(process.env.PORT || 3000);
 const publicDirectory = fileURLToPath(new URL("../public", import.meta.url));
 const maxBodyBytes = 2 * 1024 * 1024;
@@ -137,8 +138,10 @@ export function createRequestHandler({
   authService = createAuthService(),
   workspaceStore = createWorkspaceStore(),
   oauthService: providedOAuthService,
+  outreachService: providedOutreachService,
 } = {}) {
   const oauthService = providedOAuthService || createOAuthService({ workspaceStore });
+  const outreachService = providedOutreachService || createOutreachService();
 
   async function authenticatedSession(request) {
     const session = await authService.session(request);
@@ -378,6 +381,83 @@ export function createRequestHandler({
         return sendJson(response, 200, {
           data: activations,
           meta: { demo: false, persisted: true },
+        }, cookieHeaders(session.cookies));
+      } catch (error) {
+        return sendError(response, error);
+      }
+    }
+
+    if (request.method === "GET" && pathname === "/api/v1/outreach/readiness") {
+      try {
+        let cookies = [];
+        if (authService.config.configured) cookies = (await authenticatedSession(request)).cookies;
+        return sendJson(response, 200, { data: outreachService.readiness }, cookieHeaders(cookies));
+      } catch (error) {
+        return sendError(response, error);
+      }
+    }
+
+    if (request.method === "GET" && pathname === "/api/v1/outreach/campaigns") {
+      try {
+        if (!authService.config.configured) return sendJson(response, 200, { data: [], meta: { demo: true } });
+        const session = await authenticatedSession(request);
+        const limit = Math.min(20, Math.max(1, Number(searchParams.get("limit")) || 10));
+        const campaigns = await workspaceStore.listOutreachCampaigns(session.data.user, session.data.accessToken, limit);
+        return sendJson(response, 200, { data: campaigns, meta: { demo: false } }, cookieHeaders(session.cookies));
+      } catch (error) {
+        return sendError(response, error);
+      }
+    }
+
+    if (request.method === "POST" && pathname === "/api/v1/outreach/preview") {
+      try {
+        if (!authService.config.configured) throw new DatabaseError("Sign in to preview your consented lead pool", 503);
+        const session = await authenticatedSession(request);
+        const input = normalizeOutreachInput(await readJson(request));
+        const state = await workspaceStore.getOutreachCandidates(session.data.user, session.data.accessToken, { frequencyHours: 48 });
+        const cohort = selectOutreachCohort(state.candidates, input, { limit: 100 });
+        const plan = publicOutreachPlan(input, cohort, outreachService.readiness);
+        return sendJson(response, 200, {
+          data: plan,
+          meta: { demo: false, persisted: false, messagesSent: 0, contactFieldsReturned: false, frequencyHours: state.frequencyHours },
+        }, cookieHeaders(session.cookies));
+      } catch (error) {
+        return sendError(response, error);
+      }
+    }
+
+    if (request.method === "POST" && pathname === "/api/v1/outreach/send") {
+      try {
+        if (!authService.config.configured) throw new DatabaseError("Sign in before launching lead outreach", 503);
+        const session = await authenticatedSession(request);
+        const rawInput = await readJson(request);
+        const input = normalizeOutreachInput(rawInput, { requireSendConfirmation: true });
+        const state = await workspaceStore.getOutreachCandidates(session.data.user, session.data.accessToken, { frequencyHours: 48 });
+        const campaignId = typeof rawInput.campaignId === "string" && /^out_[a-f0-9]{16}$/.test(rawInput.campaignId)
+          ? rawInput.campaignId
+          : undefined;
+        const cohort = selectOutreachCohort(state.candidates, input, { limit: 100 });
+        const plan = publicOutreachPlan(input, cohort, outreachService.readiness, { id: campaignId });
+        if (!plan.launchable) {
+          const missing = plan.channels.filter((channel) => plan.audience.channels?.[channel] > 0 && !plan.providers[channel]?.configured);
+          const error = new Error(missing.length
+            ? `Configure the ${missing.join(" and ").toUpperCase()} delivery provider before launch`
+            : "No eligible consented leads are available for this launch");
+          error.statusCode = 409;
+          throw error;
+        }
+        const created = await workspaceStore.createOutreachCampaign(session.data.user, session.data.accessToken, plan);
+        const deliveries = await outreachService.deliver(plan, cohort.recipients);
+        const result = await workspaceStore.finishOutreachCampaign(
+          session.data.user,
+          session.data.accessToken,
+          created.campaign.id,
+          deliveries,
+          cohort.summary,
+        );
+        return sendJson(response, 201, {
+          data: { ...plan, status: result.status, audience: { ...plan.audience, sent: result.sent, failed: result.failed } },
+          meta: { demo: false, persisted: true, messagesSent: result.sent, contactFieldsReturned: false },
         }, cookieHeaders(session.cookies));
       } catch (error) {
         return sendError(response, error);

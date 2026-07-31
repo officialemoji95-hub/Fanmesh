@@ -2,7 +2,7 @@ export const openApiDocument = {
   openapi: "3.1.0",
   info: {
     title: "FanMesh API",
-    version: "0.10.0",
+    version: "0.11.0",
     description: "Audience intelligence API for consented fan relationships.",
   },
   servers: [{ url: "/api/v1" }],
@@ -166,6 +166,50 @@ export const openApiDocument = {
           400: { description: "Invalid content, channel, or ownership confirmation" },
           401: { description: "Sign-in required" },
         },
+      },
+    },
+    "/outreach/readiness": {
+      get: {
+        summary: "Report safe email and SMS provider readiness without exposing credentials",
+        security: [{ creatorSession: [] }],
+        responses: { 200: { description: "Resend and Twilio readiness" }, 401: { description: "Sign-in required in account mode" } },
+      },
+    },
+    "/outreach/campaigns": {
+      get: {
+        summary: "List recent lead-outreach campaigns without contact fields",
+        security: [{ creatorSession: [] }],
+        responses: { 200: { description: "Campaign summaries and provider result counts" }, 401: { description: "Sign-in required" } },
+      },
+    },
+    "/outreach/preview": {
+      post: {
+        summary: "Preview a consented, source-filtered lead cohort without returning contact fields",
+        security: [{ creatorSession: [] }],
+        requestBody: { required: true, content: { "application/json": { schema: {
+          type: "object",
+          required: ["title", "contentUrl", "message", "channels", "sources", "confirmedOwnedContent", "confirmedAudienceRights"],
+          properties: {
+            title: { type: "string", minLength: 2, maxLength: 100 },
+            contentUrl: { type: "string", format: "uri" },
+            subject: { type: "string", maxLength: 150 },
+            message: { type: "string", minLength: 2, maxLength: 500 },
+            channels: { type: "array", items: { type: "string", enum: ["email", "sms"] } },
+            sources: { type: "array", items: { type: "string", enum: ["meta_ads", "tiktok_ads", "snapchat_ads", "x_ads", "google_ads", "youtube_ads", "threads_ads", "csv"] } },
+            holdoutPercent: { type: "number", minimum: 0, maximum: 25 },
+            confirmedOwnedContent: { type: "boolean", const: true },
+            confirmedAudienceRights: { type: "boolean", const: true },
+          },
+        } } } },
+        responses: { 200: { description: "Private cohort counts, tracking links, and provider readiness" }, 400: { description: "Invalid or unconfirmed outreach" }, 401: { description: "Sign-in required" } },
+      },
+    },
+    "/outreach/send": {
+      post: {
+        summary: "Revalidate the cohort, send through configured providers, and persist delivery receipts",
+        security: [{ creatorSession: [] }],
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["campaignId", "confirmedSend"] } } } },
+        responses: { 201: { description: "Launch completed or partially completed with safe counts" }, 409: { description: "Provider missing, cohort empty, or campaign already submitted" }, 401: { description: "Sign-in required" } },
       },
     },
     "/organic/posts": {

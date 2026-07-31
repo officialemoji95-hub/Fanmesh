@@ -15,7 +15,7 @@ The score ranks follow-up opportunities. It is not an estimate of how many addit
 
 ## Starting a pulse
 
-Select **Start organic pulse** on a recent-post card. The server verifies that the opaque post key still exists in the latest authorized sync and then:
+Select **Prepare organic pulse** on a recent-post card. The server verifies that the opaque post key still exists in the latest authorized sync and then:
 
 1. records the post's current organic reach/views, interactions, follower coverage, benchmark, and capture time;
 2. keeps `paidIncluded: false` so later ad results can be compared without rewriting the organic starting point;

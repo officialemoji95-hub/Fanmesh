@@ -39,3 +39,15 @@ services:
         sync: false
       - key: THREADS_APP_SECRET
         sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: OUTREACH_EMAIL_FROM
+        sync: false
+      - key: OUTREACH_REPLY_TO
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_FROM_NUMBER
+        sync: false
