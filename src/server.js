@@ -14,7 +14,7 @@ import { createOutreachService, normalizeOutreachInput, publicOutreachPlan, sele
 import { getConnectionCatalog, planSocialExperiment, previewLeadImport, previewPlatformIdentityImport } from "./social.js";
 import { scoreAudience, scoreFan } from "./scoring.js";
 
-const APP_VERSION = "0.11.0";
+const APP_VERSION = "0.12.0";
 const port = Number(process.env.PORT || 3000);
 const publicDirectory = fileURLToPath(new URL("../public", import.meta.url));
 const maxBodyBytes = 2 * 1024 * 1024;
