@@ -1,4 +1,4 @@
-# FanMesh API v0.9
+# FanMesh API v0.11
 
 The prototype serves JSON under `/api`. Responses use `{ "data": ... }` for successful resources and `{ "error": { "message": ... } }` for errors. When Supabase is configured, workspace endpoints require the secure creator session cookie and PostgreSQL row-level security isolates every workspace. When Supabase is unconfigured, dashboard reads use clearly labeled demo data.
 
@@ -64,6 +64,15 @@ Requires a creator session in account mode. Accepts a creator-controlled public 
 ### `GET /api/v1/activations?limit=5`
 
 Returns recent saved `fan_activation_v1` drafts for the signed-in workspace. Contact details are not included.
+
+### Lead Outreach
+
+- `GET /api/v1/outreach/readiness` reports whether Resend email and Twilio SMS are configured without returning any secret.
+- `POST /api/v1/outreach/preview` accepts a title, destination, subject/message, `email`/`sms` channels, authorized source filters, holdout, and both ownership/consent confirmations. It returns eligible, held-out, suppressed, selected, source, and channel counts; no contact fields are returned.
+- `POST /api/v1/outreach/send` requires the preview `campaignId` and `confirmedSend: true`. It re-queries consent and the 48-hour frequency window, caps the launch at 100 leads, delivers through the configured provider, and records safe delivery receipts.
+- `GET /api/v1/outreach/campaigns` lists campaign status and aggregate results without contact fields.
+
+Supported outreach provenance filters are `meta_ads`, `tiktok_ads`, `snapchat_ads`, `x_ads`, `google_ads`, `youtube_ads`, `threads_ads`, and `csv`.
 
 ### `GET /api/v1/organic/posts`
 

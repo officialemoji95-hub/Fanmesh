@@ -17,8 +17,8 @@ FanMesh then:
 4. saves the activation plan without contact details in the plan payload; and
 5. reports whether each channel has an eligible audience and still needs a provider connection.
 
-Preparing a fan alert sends zero messages. Until delivery adapters are implemented, the creator can copy the attribution links into permitted publishing and messaging tools. Platform-only followers remain a conversion opportunity: use the social link in a bio, Story, description, or pinned post where supported to invite voluntary direct opt-in.
+Preparing a legacy fan alert sends zero messages. The Lead Outreach composer is the launch path: it previews the exact consented cohort, reports provider readiness, and requires a separate explicit send confirmation. Platform-only followers remain a conversion opportunity and never enter email/SMS delivery without direct consent.
 
 ## Delivery boundary
 
-The next delivery milestone needs a provider such as a verified email service and, optionally, a compliant SMS service. Before a worker sends anything it must re-check active consent, suppression status, frequency caps, and workspace authorization. The delivery queue should reference fan IDs rather than duplicating contact details.
+Resend email and Twilio SMS adapters are implemented. Before a launch FanMesh re-checks source provenance, active channel consent, a 48-hour frequency cap, workspace authorization, provider readiness, and the 100-recipient beta limit. Delivery receipts reference fan IDs and provider message IDs rather than duplicating contact details. See `docs/LEAD-OUTREACH.md`.
