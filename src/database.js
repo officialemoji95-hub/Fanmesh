@@ -318,12 +318,14 @@ export function createWorkspaceStore({ environment = process.env, fetchImpl = gl
       connectedPlatforms: new Set((connectionRows || []).filter((row) => row.status === "connected").map((row) => row.platform)).size,
     };
     let webhookRows = [];
+    let providerWebhookSchemaReady = true;
     try {
       webhookRows = await request(
         `/rest/v1/provider_webhooks?select=platform,external_form_id,status,received_count,last_received_at&workspace_id=eq.${workspaceId}`,
         token,
       ) || [];
     } catch {
+      providerWebhookSchemaReady = false;
       // The dashboard remains usable until the optional provider-webhook migration is installed.
     }
     return {
@@ -334,6 +336,7 @@ export function createWorkspaceStore({ environment = process.env, fetchImpl = gl
         row.platform,
         publicConnectionState(row, webhookRows.filter((item) => item.platform === row.platform)),
       ])),
+      readiness: { providerWebhookSchemaReady },
     };
   }
 
