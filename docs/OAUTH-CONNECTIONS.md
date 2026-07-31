@@ -80,7 +80,20 @@ SNAPCHAT_CLIENT_ID=
 SNAPCHAT_CLIENT_SECRET=
 ```
 
-FanMesh initially requests `snapchat-marketing-api` and discovers accessible organizations and ad accounts. Public Profile API access uses the separate `snapchat-profile-api` scope and is currently subject to Snapchat allowlisting; add that scope only after approval.
+FanMesh requests `snapchat-marketing-api`, unwraps Snap's organization/ad-account response objects, and inventories Lead Generation Forms under each accessible ad account. A connected account shows real counts for ad accounts, forms with email/phone fields, live forms, and verified leads captured since FanMesh enabled the webhook.
+
+Snap delivers new Lead Generation Form submissions through a per-form webhook. Enabling a form in FanMesh:
+
+1. requires Organization Admin access in Snapchat;
+2. requires the form owner to confirm that its disclosure permits the selected email/SMS updates;
+3. creates a unique FanMesh webhook URL through Snap's official Marketing API;
+4. encrypts Snap's returned HMAC secret;
+5. validates the `Signature` and `t` headers over the unmodified request body, rejects events outside the replay window, and confirms the form/ad-account match;
+6. deduplicates by Snap lead ID, stores only safe event metadata, and commits the permitted contact plus consent provenance into the private workspace.
+
+Run `supabase/migrations/202607310002_snapchat_lead_webhooks.sql` and set `SUPABASE_SERVICE_ROLE_KEY` only in Render before enabling live forms. The service-role key is necessary because an incoming Snap webhook has no creator session; it is never returned to browser code. Snap's documented webhook path delivers leads received after the integration is active, so use the official lead export importer for historical submissions.
+
+Public Profile API access uses the separate `snapchat-profile-api` scope and is currently subject to Snapchat allowlisting; add that scope only after approval.
 
 ## X
 
@@ -116,15 +129,16 @@ Threads is intentionally a separate connection from Meta Pages/Instagram. Its de
 
 The Connections screen can then run a manual sync or disconnect. Disconnecting erases the encrypted credential bundle from FanMesh; it does not delete the creator's platform account.
 
-## Next connection work
+## Provider rollout
 
-Provider depth is prioritized over a row of shallow login buttons. Meta is completed end to end first, Snapchat Business is the next full adapter, and the remaining providers reuse the proven connection contract.
+Provider depth is prioritized over a row of shallow login buttons. Meta established the shared connection contract. Snapchat Business is now the active full adapter, and the remaining providers reuse the same authorization, sync, consent, health, and attribution rules.
 
 After live developer apps have authorized successfully, the adapter order is:
 
-1. signed Meta Lead Ads webhook delivery with replay protection, form-specific consent-field rules, scheduled token refresh, and background sync jobs;
-2. Snapchat Business organizations, ad accounts, campaign reporting, and Snapchat Public Profile metrics after allowlisting;
-3. TikTok for Business advertising authorization;
-4. Google Ads and YouTube campaign reporting through their approved developer products;
-5. X Ads OAuth 1.0a after Ads API approval and Threads expansion through its separate Meta developer product;
-6. platform-native publishing only for products and scopes explicitly approved for the app.
+1. operate Snapchat Lead Generation Form webhooks against live authorized forms and add campaign reporting;
+2. add Snapchat Public Profile metrics after allowlisting;
+3. signed Meta Lead Ads webhook delivery with replay protection and background sync jobs;
+4. TikTok for Business advertising authorization;
+5. Google Ads and YouTube campaign reporting through their approved developer products;
+6. X Ads OAuth 1.0a after Ads API approval and Threads expansion through its separate Meta developer product;
+7. platform-native publishing only for products and scopes explicitly approved for the app.
