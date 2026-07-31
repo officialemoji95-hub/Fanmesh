@@ -76,7 +76,7 @@ test("Snapchat catalog exposes safe activation gates without returning secrets",
   assert.equal(JSON.stringify(snapchat).includes("snap-secret"), false);
 });
 
-test("Snapchat callback unwraps organizations and discovers authorized lead forms", async () => {
+test("Snapchat callback inventories campaigns, delivery hierarchy, lifetime stats, and authorized lead forms", async () => {
   let savedConnection;
   const service = createOAuthService({
     environment: {
@@ -117,6 +117,71 @@ test("Snapchat callback unwraps organizations and discovers authorized lead form
           legal_disclosures: { description: "Creator updates", consent_form_fields: [{ required: true, consent_description: "Send updates" }] },
         } }] });
       }
+      if (value.includes("/v1/adaccounts/ad-1/campaigns")) {
+        const request = new URL(value);
+        assert.equal(request.searchParams.get("limit"), "200");
+        assert.equal(request.searchParams.get("sort"), "updated_at-desc");
+        return response({ campaigns: [{ campaign: {
+          id: "campaign-1",
+          ad_account_id: "ad-1",
+          name: "New single launch",
+          status: "ACTIVE",
+          objective: "WEB_CONVERSION",
+          objective_v2_properties: { objective_v2_type: "SALES" },
+          delivery_status: ["DELIVERING"],
+          daily_budget_micro: 25000000,
+          start_time: "2026-07-20T00:00:00.000Z",
+          updated_at: "2026-07-31T12:00:00.000Z",
+        } }] });
+      }
+      if (value.includes("/v1/adaccounts/ad-1/adsquads")) {
+        return response({ adsquads: [{ adsquad: {
+          id: "squad-1",
+          campaign_id: "campaign-1",
+          name: "Core fans",
+          status: "ACTIVE",
+          type: "SNAP_ADS",
+          optimization_goal: "SWIPES",
+          daily_budget_micro: 20000000,
+        } }] });
+      }
+      if (value.includes("/v1/adaccounts/ad-1/ads?")) {
+        return response({ ads: [{ ad: {
+          id: "snap-ad-1",
+          ad_squad_id: "squad-1",
+          creative_id: "creative-1",
+          name: "Release teaser",
+          status: "ACTIVE",
+          type: "REMOTE_WEBPAGE",
+          review_status: "APPROVED",
+          delivery_status: ["DELIVERING"],
+        } }] });
+      }
+      if (value.includes("/v1/adaccounts/ad-1/stats")) {
+        const request = new URL(value);
+        assert.equal(request.searchParams.get("breakdown"), "campaign");
+        assert.equal(request.searchParams.get("granularity"), "TOTAL");
+        assert.match(request.searchParams.get("fields"), /native_leads/);
+        return response({ total_stats: [{ total_stat: {
+          id: "ad-1",
+          type: "AD_ACCOUNT",
+          finalized_data_end_time: "2026-07-29T00:00:00.000Z",
+          breakdown_stats: { campaign: [{
+            id: "campaign-1",
+            type: "CAMPAIGN",
+            stats: {
+              impressions: 125000,
+              swipes: 3200,
+              spend: 420500000,
+              video_views: 90000,
+              view_completion: 28000,
+              native_leads: 38,
+              conversion_purchases: 12,
+              conversion_sign_ups: 19,
+            },
+          }] },
+        } }] });
+      }
       throw new Error(`Unexpected URL ${url}`);
     },
   });
@@ -129,7 +194,17 @@ test("Snapchat callback unwraps organizations and discovers authorized lead form
 
   assert.equal(result.account, "Artist Business");
   assert.equal(savedConnection.metadata.metrics.adAccounts, 1);
+  assert.equal(savedConnection.metadata.metrics.campaigns, 1);
+  assert.equal(savedConnection.metadata.metrics.adSquads, 1);
+  assert.equal(savedConnection.metadata.metrics.ads, 1);
+  assert.equal(savedConnection.metadata.metrics.campaignImpressionsLifetime, 125000);
   assert.equal(savedConnection.metadata.metrics.leadForms, 1);
+  assert.equal(savedConnection.metadata.public.campaigns[0].name, "New single launch");
+  assert.equal(savedConnection.metadata.public.campaigns[0].stats.spend, 420.5);
+  assert.equal(savedConnection.metadata.public.campaigns[0].stats.conversions, 31);
+  assert.equal(savedConnection.metadata.public.adSquads[0].campaignId, "campaign-1");
+  assert.equal(savedConnection.metadata.public.ads[0].campaignId, "campaign-1");
+  assert.equal(savedConnection.metadata.public.campaignSummaryLifetime.nativeLeads, 38);
   assert.equal(savedConnection.metadata.public.leadForms[0].id, "form-1");
   assert.deepEqual(savedConnection.metadata.public.leadForms[0].contactFields, ["EMAIL"]);
   assert.equal(savedConnection.metadata.public.leadForms[0].hasLegalDisclosure, true);
