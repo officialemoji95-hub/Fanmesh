@@ -93,6 +93,8 @@ Snap delivers new Lead Generation Form submissions through a per-form webhook. E
 
 Run `supabase/migrations/202607310002_snapchat_lead_webhooks.sql` and set `SUPABASE_SERVICE_ROLE_KEY` only in Render before enabling live forms. The service-role key is necessary because an incoming Snap webhook has no creator session; it is never returned to browser code. Snap's documented webhook path delivers leads received after the integration is active, so use the official lead export importer for historical submissions.
 
+The Connections screen reports five safe readiness gates: developer credentials, secure callback/token encryption, the webhook migration, the server-only webhook writer, and an authorized account with discoverable forms. These are booleans only; FanMesh never returns the credential values. For historical leads, download the CSV from Snapchat Ads Manager at the ad-account level, select Snapchat Ads in the direct-contact importer, choose only the channels permitted by that form, and confirm the disclosure. FanMesh recognizes common Snap export header variants and records `snapchat_ads:official_export:creator_attested` provenance.
+
 Public Profile API access uses the separate `snapchat-profile-api` scope and is currently subject to Snapchat allowlisting; add that scope only after approval.
 
 ## X
