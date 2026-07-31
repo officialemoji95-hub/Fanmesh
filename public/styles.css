@@ -171,6 +171,20 @@ h2 { font-size: 18px; }
 #meta-lead-import-form .meta-lead-channels { display: flex; flex-wrap: wrap; gap: 7px 15px; }
 .meta-lead-channels .check { display: inline-flex; align-items: center; gap: 4px; color: #717771; font-size: 8px; }
 .meta-lead-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.snapchat-lead-capture { margin-top: 14px; padding: 16px; display: grid; grid-template-columns: .8fr 1.2fr; gap: 18px; border: 1px solid #eadf81; border-radius: 11px; background: linear-gradient(140deg, #fffbd7, #fbfaf6 65%); }
+.snapchat-lead-copy h3 { margin-top: 3px; font-size: 15px; }
+.snapchat-lead-copy > p:not(.eyebrow) { margin-top: 7px; color: #72746e; font-size: 8px; line-height: 1.55; }
+.snapchat-lead-stats { margin-top: 12px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.snapchat-lead-stats span { padding: 8px; border: 1px solid rgba(194,177,28,.28); border-radius: 8px; background: rgba(255,255,255,.72); }
+.snapchat-lead-stats small, .snapchat-lead-stats strong { display: block; }
+.snapchat-lead-stats small { color: #7b7a6f; font-size: 7px; font-weight: 700; text-transform: uppercase; }
+.snapchat-lead-stats strong { margin-top: 2px; color: #191a1d; font-size: 15px; }
+#snapchat-lead-form { display: grid; gap: 9px; }
+#snapchat-lead-form fieldset { min-width: 0; margin: 0; padding: 9px; display: grid; gap: 6px; border: 1px solid #e4dda2; border-radius: 8px; background: rgba(255,255,255,.7); }
+#snapchat-lead-form legend { padding: 0 4px; color: #78786f; font-size: 8px; font-weight: 700; }
+#snapchat-lead-form .meta-lead-channels { display: flex; flex-wrap: wrap; gap: 7px 15px; }
+#snapchat-lead-form input { accent-color: #1b1c1f; }
+.meta-form-option.is-live { border-color: #c4d87a; background: #f7ffe7; }
 .tiktok-performance { margin-top: 14px; padding: 16px; border: 1px solid #dad7e7; border-radius: 11px; background: linear-gradient(140deg, #f8f7ff, #fbfaf6 62%); }
 .tiktok-performance-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .tiktok-performance-heading h3 { margin-top: 3px; font-size: 15px; }
@@ -483,7 +497,7 @@ body.auth-open { overflow: hidden; }
   .top-actions .secondary { display: none; }
   .top-actions .button { padding: 0 10px; font-size: 10px; }
   .notice { align-items: flex-start; }
-  .metrics, .dashboard-grid, .campaign-grid, .social-planner, .import-workbench, .meta-lead-import, .organic-post-list, .developer-grid { grid-template-columns: 1fr; }
+  .metrics, .dashboard-grid, .campaign-grid, .social-planner, .import-workbench, .meta-lead-import, .snapchat-lead-capture, .organic-post-list, .developer-grid { grid-template-columns: 1fr; }
   .tiktok-performance-metrics, .platform-performance-metrics { grid-template-columns: repeat(2, 1fr); }
   .meta-ad-strip { grid-template-columns: repeat(2, 1fr); }
   .meta-ad-strip > span:last-child { grid-column: 1 / -1; }
