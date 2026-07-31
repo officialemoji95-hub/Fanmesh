@@ -43,6 +43,16 @@ FanMesh becomes the identity and intelligence layer between a creator and the pl
 - Release playbook with tracked links and conversion events
 - Supported social publishing integrations where official APIs permit it
 
+### Provider rollout
+
+FanMesh completes one measurable provider loop before widening the surface area:
+
+1. **Meta first** — Facebook Pages, Instagram professional insights, Meta ad accounts, Instant Forms, token lifecycle, webhook ingestion, and lead attribution.
+2. **Snapchat Business next** — organizations, ad accounts, campaign reporting, and authorized lead ingestion where the approved Marketing API exposes it.
+3. **Expansion lane** — TikTok for Business, Google/YouTube Ads, X Ads, and Threads reuse the same OAuth, sync-health, consent-provenance, and attribution contract.
+
+The provider cards and OAuth foundation may appear before a provider is production-complete. FanMesh labels that state honestly instead of presenting a configured login button as a finished data integration.
+
 ## Later differentiators
 
 - **Fan Passport:** fans voluntarily connect the places where they follow, listen, buy, and participate.

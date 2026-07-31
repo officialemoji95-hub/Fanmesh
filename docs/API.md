@@ -1,4 +1,4 @@
-# FanMesh API v0.11
+# FanMesh API v0.12
 
 The prototype serves JSON under `/api`. Responses use `{ "data": ... }` for successful resources and `{ "error": { "message": ... } }` for errors. When Supabase is configured, workspace endpoints require the secure creator session cookie and PostgreSQL row-level security isolates every workspace. When Supabase is unconfigured, dashboard reads use clearly labeled demo data.
 
