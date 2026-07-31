@@ -15,8 +15,21 @@ const DEFAULT_META_GRAPH_VERSION = "v25.0";
 const MAX_META_LEAD_FORMS = 10;
 const MAX_META_LEADS = 100;
 const MAX_SNAPCHAT_AD_ACCOUNTS = 20;
+const MAX_SNAPCHAT_CAMPAIGNS = 200;
+const MAX_SNAPCHAT_AD_SQUADS = 400;
+const MAX_SNAPCHAT_ADS = 600;
 const MAX_SNAPCHAT_LEAD_FORMS = 100;
 const MAX_SNAPCHAT_WEBHOOK_FORMS = 10;
+const SNAPCHAT_REPORT_FIELDS = [
+  "impressions",
+  "swipes",
+  "spend",
+  "video_views",
+  "view_completion",
+  "native_leads",
+  "conversion_purchases",
+  "conversion_sign_ups",
+];
 
 export class OAuthError extends Error {
   constructor(message, statusCode = 400) {
@@ -839,6 +852,117 @@ function snapchatEntities(payload, plural, singular) {
   return rows.map((row) => row?.[singular] || row).filter((row) => row && typeof row === "object");
 }
 
+async function snapchatPagedEntities(fetchImpl, token, initialUrl, plural, singular, maxRows) {
+  const rows = [];
+  let nextUrl = initialUrl;
+  let pages = 0;
+  while (nextUrl && rows.length < maxRows && pages < 5) {
+    const payload = await platformRequest(fetchImpl, nextUrl, {
+      headers: { authorization: `Bearer ${token.accessToken}` },
+    });
+    rows.push(...snapchatEntities(payload, plural, singular));
+    pages += 1;
+    nextUrl = safeHttpsUrl(payload?.paging?.next_link, "adsapi.snapchat.com");
+  }
+  return { rows: rows.slice(0, maxRows), truncated: Boolean(nextUrl) || rows.length > maxRows };
+}
+
+function snapchatCampaignStats(payload) {
+  const result = new Map();
+  const totals = Array.isArray(payload?.total_stats) ? payload.total_stats : [];
+  for (const row of totals) {
+    const total = row?.total_stat || row;
+    const campaigns = Array.isArray(total?.breakdown_stats?.campaign)
+      ? total.breakdown_stats.campaign
+      : total?.type === "CAMPAIGN" ? [total] : [];
+    for (const campaign of campaigns) {
+      if (!campaign?.id) continue;
+      const stats = campaign.stats && typeof campaign.stats === "object" ? campaign.stats : {};
+      const spendMicros = Math.round(nonNegativeNumber(stats.spend));
+      const purchases = Math.round(nonNegativeNumber(stats.conversion_purchases));
+      const signUps = Math.round(nonNegativeNumber(stats.conversion_sign_ups ?? stats.conversion_signups));
+      result.set(text(campaign.id, 160), {
+        impressions: Math.round(nonNegativeNumber(stats.impressions)),
+        swipes: Math.round(nonNegativeNumber(stats.swipes)),
+        spendMicros,
+        spend: Math.round((spendMicros / 1000000) * 100) / 100,
+        videoViews: Math.round(nonNegativeNumber(stats.video_views)),
+        completedViews: Math.round(nonNegativeNumber(stats.view_completion)),
+        nativeLeads: Math.round(nonNegativeNumber(stats.native_leads)),
+        purchases,
+        signUps,
+        conversions: purchases + signUps,
+        finalizedAt: total.finalized_data_end_time || campaign.finalized_data_end_time || null,
+        conversionsProcessedAt: total.conversion_data_processed_end_time || campaign.conversion_data_processed_end_time || null,
+      });
+    }
+  }
+  return result;
+}
+
+function normalizedSnapchatCampaign(campaign, account, stats = {}) {
+  return {
+    id: text(campaign?.id, 160),
+    adAccountId: account.id,
+    adAccountName: account.name,
+    currency: account.currency,
+    name: text(campaign?.name, 200) || "Untitled Snap campaign",
+    status: text(campaign?.status, 40),
+    objective: text(campaign?.objective, 80),
+    objectiveType: text(campaign?.objective_v2_properties?.objective_v2_type, 80),
+    buyModel: text(campaign?.buy_model, 40),
+    creationState: text(campaign?.creation_state, 40),
+    deliveryStatus: (Array.isArray(campaign?.delivery_status) ? campaign.delivery_status : [])
+      .map((value) => text(value, 100)).filter(Boolean).slice(0, 10),
+    dailyBudget: Math.round((nonNegativeNumber(campaign?.daily_budget_micro) / 1000000) * 100) / 100,
+    lifetimeSpendCap: Math.round((nonNegativeNumber(campaign?.lifetime_spend_cap_micro) / 1000000) * 100) / 100,
+    startAt: campaign?.start_time || null,
+    endAt: campaign?.end_time || null,
+    createdAt: campaign?.created_at || null,
+    updatedAt: campaign?.updated_at || null,
+    stats,
+  };
+}
+
+function normalizedSnapchatAdSquad(adSquad, account) {
+  return {
+    id: text(adSquad?.id, 160),
+    adAccountId: account.id,
+    campaignId: text(adSquad?.campaign_id, 160),
+    name: text(adSquad?.name, 200) || "Untitled Snap ad squad",
+    status: text(adSquad?.status, 40),
+    type: text(adSquad?.type, 60),
+    optimizationGoal: text(adSquad?.optimization_goal, 80),
+    bidStrategy: text(adSquad?.bid_strategy, 80),
+    dailyBudget: Math.round((nonNegativeNumber(adSquad?.daily_budget_micro) / 1000000) * 100) / 100,
+    deliveryStatus: (Array.isArray(adSquad?.delivery_status) ? adSquad.delivery_status : [])
+      .map((value) => text(value, 100)).filter(Boolean).slice(0, 10),
+    startAt: adSquad?.start_time || null,
+    endAt: adSquad?.end_time || null,
+    createdAt: adSquad?.created_at || null,
+    updatedAt: adSquad?.updated_at || null,
+  };
+}
+
+function normalizedSnapchatAd(ad, account, campaignId) {
+  return {
+    id: text(ad?.id, 160),
+    adAccountId: account.id,
+    campaignId: text(campaignId, 160),
+    adSquadId: text(ad?.ad_squad_id, 160),
+    creativeId: text(ad?.creative_id, 160),
+    name: text(ad?.name, 200) || "Untitled Snap ad",
+    status: text(ad?.status, 40),
+    type: text(ad?.type, 60),
+    renderType: text(ad?.render_type, 40),
+    reviewStatus: text(ad?.review_status, 40),
+    deliveryStatus: (Array.isArray(ad?.delivery_status) ? ad.delivery_status : [])
+      .map((value) => text(value, 100)).filter(Boolean).slice(0, 10),
+    createdAt: ad?.created_at || null,
+    updatedAt: ad?.updated_at || null,
+  };
+}
+
 function normalizedSnapchatLeadForm(form, webhookState = {}) {
   const fields = (Array.isArray(form?.form_fields) ? form.form_fields : [])
     .map((field) => text(field?.type, 60).toUpperCase())
@@ -887,29 +1011,95 @@ async function syncSnapchat(token, fetchImpl) {
   })).filter((organization) => organization.id);
   const adAccounts = organizations.flatMap((organization) => organization.adAccounts).slice(0, MAX_SNAPCHAT_AD_ACCOUNTS);
   const syncIssues = [];
-  const formBatches = await Promise.all(adAccounts.map(async (account) => {
+  async function optionalInventory(account, area, path, plural, singular, maxRows) {
     try {
-      const formPayload = await platformRequest(fetchImpl, `https://adsapi.snapchat.com/v1/adaccounts/${encodeURIComponent(account.id)}/lead_generation_forms`, {
-        headers: { authorization: `Bearer ${token.accessToken}` },
-      });
-      return snapchatEntities(formPayload, "lead_generation_forms", "lead_generation_form")
-        .map((form) => normalizedSnapchatLeadForm(form, storedWebhooks))
-        .filter((form) => form.id);
+      const query = path === "lead_generation_forms" ? "" : "?limit=200&sort=updated_at-desc";
+      const page = await snapchatPagedEntities(
+        fetchImpl,
+        token,
+        `https://adsapi.snapchat.com/v1/adaccounts/${encodeURIComponent(account.id)}/${path}${query}`,
+        plural,
+        singular,
+        maxRows,
+      );
+      if (page.truncated) {
+        syncIssues.push({ area: `${area}:${account.id}`, message: `Snapchat returned more ${area.replaceAll("_", " ")} than this sync safely stores; the most recently updated ${maxRows} were kept.` });
+      }
+      return page.rows;
     } catch (error) {
-      syncIssues.push({ area: `lead_forms:${account.id}`, message: text(error.message, 240) || "Snap lead forms could not be read." });
+      syncIssues.push({ area: `${area}:${account.id}`, message: text(error.message, 240) || `Snap ${area.replaceAll("_", " ")} could not be read.` });
       return [];
     }
+  }
+  async function optionalCampaignStats(account) {
+    const url = new URL(`https://adsapi.snapchat.com/v1/adaccounts/${encodeURIComponent(account.id)}/stats`);
+    url.search = new URLSearchParams({
+      breakdown: "campaign",
+      granularity: "TOTAL",
+      fields: SNAPCHAT_REPORT_FIELDS.join(","),
+      limit: "200",
+    });
+    try {
+      return snapchatCampaignStats(await platformRequest(fetchImpl, url, {
+        headers: { authorization: `Bearer ${token.accessToken}` },
+      }));
+    } catch (error) {
+      syncIssues.push({ area: `campaign_stats:${account.id}`, message: text(error.message, 240) || "Snap campaign statistics could not be read." });
+      return new Map();
+    }
+  }
+  const accountBatches = await Promise.all(adAccounts.map(async (account) => {
+    const [campaignRows, adSquadRows, adRows, formRows, campaignStats] = await Promise.all([
+      optionalInventory(account, "campaigns", "campaigns", "campaigns", "campaign", MAX_SNAPCHAT_CAMPAIGNS),
+      optionalInventory(account, "ad_squads", "adsquads", "adsquads", "adsquad", MAX_SNAPCHAT_AD_SQUADS),
+      optionalInventory(account, "ads", "ads", "ads", "ad", MAX_SNAPCHAT_ADS),
+      optionalInventory(account, "lead_forms", "lead_generation_forms", "lead_generation_forms", "lead_generation_form", MAX_SNAPCHAT_LEAD_FORMS),
+      optionalCampaignStats(account),
+    ]);
+    const adSquads = adSquadRows.map((item) => normalizedSnapchatAdSquad(item, account)).filter((item) => item.id);
+    const campaignBySquad = new Map(adSquads.map((item) => [item.id, item.campaignId]));
+    return {
+      campaigns: campaignRows.map((item) => normalizedSnapchatCampaign(item, account, campaignStats.get(text(item?.id, 160)) || {})).filter((item) => item.id),
+      adSquads,
+      ads: adRows.map((item) => normalizedSnapchatAd(item, account, campaignBySquad.get(text(item?.ad_squad_id, 160)))).filter((item) => item.id),
+      leadForms: formRows.map((form) => normalizedSnapchatLeadForm(form, storedWebhooks)).filter((form) => form.id),
+    };
   }));
-  const leadForms = formBatches.flat().slice(0, MAX_SNAPCHAT_LEAD_FORMS);
+  const campaigns = accountBatches.flatMap((batch) => batch.campaigns).slice(0, MAX_SNAPCHAT_CAMPAIGNS);
+  const adSquads = accountBatches.flatMap((batch) => batch.adSquads).slice(0, MAX_SNAPCHAT_AD_SQUADS);
+  const ads = accountBatches.flatMap((batch) => batch.ads).slice(0, MAX_SNAPCHAT_ADS);
+  const leadForms = accountBatches.flatMap((batch) => batch.leadForms).slice(0, MAX_SNAPCHAT_LEAD_FORMS);
+  const currencies = [...new Set(campaigns.map((campaign) => campaign.currency).filter(Boolean))];
+  const reportCurrency = currencies.length === 1 ? currencies[0] : currencies.length > 1 ? "mixed" : null;
+  const campaignSummaryLifetime = {
+    period: "lifetime",
+    currency: reportCurrency,
+    spend: reportCurrency && reportCurrency !== "mixed" ? Math.round(campaigns.reduce((sum, item) => sum + nonNegativeNumber(item.stats?.spend), 0) * 100) / 100 : null,
+    impressions: campaigns.reduce((sum, item) => sum + Math.round(nonNegativeNumber(item.stats?.impressions)), 0),
+    swipes: campaigns.reduce((sum, item) => sum + Math.round(nonNegativeNumber(item.stats?.swipes)), 0),
+    videoViews: campaigns.reduce((sum, item) => sum + Math.round(nonNegativeNumber(item.stats?.videoViews)), 0),
+    completedViews: campaigns.reduce((sum, item) => sum + Math.round(nonNegativeNumber(item.stats?.completedViews)), 0),
+    nativeLeads: campaigns.reduce((sum, item) => sum + Math.round(nonNegativeNumber(item.stats?.nativeLeads)), 0),
+    purchases: campaigns.reduce((sum, item) => sum + Math.round(nonNegativeNumber(item.stats?.purchases)), 0),
+    signUps: campaigns.reduce((sum, item) => sum + Math.round(nonNegativeNumber(item.stats?.signUps)), 0),
+    conversions: campaigns.reduce((sum, item) => sum + Math.round(nonNegativeNumber(item.stats?.conversions)), 0),
+  };
   return {
     externalAccountId: organizations[0]?.id || "snapchat-user",
-    publicData: { organizations, leadForms, syncIssues },
+    publicData: { organizations, campaigns, adSquads, ads, leadForms, campaignSummaryLifetime, syncIssues },
     privateData: token.providerAssets || {},
     metrics: {
       totalFollowers: 0,
       averageViews: 0,
       organizations: organizations.length,
       adAccounts: adAccounts.length,
+      campaigns: campaigns.length,
+      activeCampaigns: campaigns.filter((campaign) => campaign.status === "ACTIVE").length,
+      adSquads: adSquads.length,
+      ads: ads.length,
+      campaignImpressionsLifetime: campaignSummaryLifetime.impressions,
+      campaignSwipesLifetime: campaignSummaryLifetime.swipes,
+      campaignConversionsLifetime: campaignSummaryLifetime.conversions,
       leadForms: leadForms.length,
       liveLeadForms: leadForms.filter((form) => form.webhookStatus === "active").length,
       capturedLeads: leadForms.reduce((sum, form) => sum + form.capturedLeads, 0),

@@ -41,6 +41,31 @@ function shortText(value, maxLength = 150) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
 }
 
+function safeTimestamp(value) {
+  const timestamp = Date.parse(typeof value === "string" ? value : "");
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : null;
+}
+
+function safeTextList(value, maxItems = 10, maxLength = 100) {
+  return (Array.isArray(value) ? value : []).slice(0, maxItems).map((item) => shortText(item, maxLength)).filter(Boolean);
+}
+
+function publicSnapchatStats(value = {}) {
+  return {
+    impressions: Math.max(0, Number(value.impressions) || 0),
+    swipes: Math.max(0, Number(value.swipes) || 0),
+    spend: Math.max(0, Number(value.spend) || 0),
+    videoViews: Math.max(0, Number(value.videoViews) || 0),
+    completedViews: Math.max(0, Number(value.completedViews) || 0),
+    nativeLeads: Math.max(0, Number(value.nativeLeads) || 0),
+    purchases: Math.max(0, Number(value.purchases) || 0),
+    signUps: Math.max(0, Number(value.signUps) || 0),
+    conversions: Math.max(0, Number(value.conversions) || 0),
+    finalizedAt: safeTimestamp(value.finalizedAt),
+    conversionsProcessedAt: safeTimestamp(value.conversionsProcessedAt),
+  };
+}
+
 function safePublicUrl(value, allowedHost) {
   try {
     const url = new URL(shortText(value, 1000));
@@ -119,6 +144,56 @@ export function publicConnectionState(row = {}, providerWebhooks = []) {
       leads: Math.max(0, Number(account?.insights30d?.leads) || 0),
     },
   })).filter((account) => account.id);
+  const snapchatCampaigns = (Array.isArray(publicData.campaigns) ? publicData.campaigns : []).slice(0, 200).map((campaign) => ({
+    id: shortText(campaign?.id, 160),
+    adAccountId: shortText(campaign?.adAccountId, 160),
+    adAccountName: shortText(campaign?.adAccountName, 160) || "Untitled Snap ad account",
+    currency: shortText(campaign?.currency, 10),
+    name: shortText(campaign?.name, 200) || "Untitled Snap campaign",
+    status: shortText(campaign?.status, 40),
+    objective: shortText(campaign?.objective, 80),
+    objectiveType: shortText(campaign?.objectiveType, 80),
+    buyModel: shortText(campaign?.buyModel, 40),
+    creationState: shortText(campaign?.creationState, 40),
+    deliveryStatus: safeTextList(campaign?.deliveryStatus),
+    dailyBudget: Math.max(0, Number(campaign?.dailyBudget) || 0),
+    lifetimeSpendCap: Math.max(0, Number(campaign?.lifetimeSpendCap) || 0),
+    startAt: safeTimestamp(campaign?.startAt),
+    endAt: safeTimestamp(campaign?.endAt),
+    createdAt: safeTimestamp(campaign?.createdAt),
+    updatedAt: safeTimestamp(campaign?.updatedAt),
+    stats: publicSnapchatStats(campaign?.stats),
+  })).filter((campaign) => campaign.id);
+  const snapchatAdSquads = (Array.isArray(publicData.adSquads) ? publicData.adSquads : []).slice(0, 400).map((adSquad) => ({
+    id: shortText(adSquad?.id, 160),
+    adAccountId: shortText(adSquad?.adAccountId, 160),
+    campaignId: shortText(adSquad?.campaignId, 160),
+    name: shortText(adSquad?.name, 200) || "Untitled Snap ad squad",
+    status: shortText(adSquad?.status, 40),
+    type: shortText(adSquad?.type, 60),
+    optimizationGoal: shortText(adSquad?.optimizationGoal, 80),
+    bidStrategy: shortText(adSquad?.bidStrategy, 80),
+    dailyBudget: Math.max(0, Number(adSquad?.dailyBudget) || 0),
+    deliveryStatus: safeTextList(adSquad?.deliveryStatus),
+    startAt: safeTimestamp(adSquad?.startAt),
+    endAt: safeTimestamp(adSquad?.endAt),
+    createdAt: safeTimestamp(adSquad?.createdAt),
+    updatedAt: safeTimestamp(adSquad?.updatedAt),
+  })).filter((adSquad) => adSquad.id && adSquad.campaignId);
+  const snapchatAds = (Array.isArray(publicData.ads) ? publicData.ads : []).slice(0, 600).map((ad) => ({
+    id: shortText(ad?.id, 160),
+    adAccountId: shortText(ad?.adAccountId, 160),
+    campaignId: shortText(ad?.campaignId, 160),
+    adSquadId: shortText(ad?.adSquadId, 160),
+    name: shortText(ad?.name, 200) || "Untitled Snap ad",
+    status: shortText(ad?.status, 40),
+    type: shortText(ad?.type, 60),
+    renderType: shortText(ad?.renderType, 40),
+    reviewStatus: shortText(ad?.reviewStatus, 40),
+    deliveryStatus: safeTextList(ad?.deliveryStatus),
+    createdAt: safeTimestamp(ad?.createdAt),
+    updatedAt: safeTimestamp(ad?.updatedAt),
+  })).filter((ad) => ad.id && ad.adSquadId);
   const leadForms = (Array.isArray(publicData.leadForms) ? publicData.leadForms : []).slice(0, 250).map((form) => ({
     id: shortText(form?.id, 80),
     pageId: shortText(form?.pageId, 80),
@@ -146,8 +221,8 @@ export function publicConnectionState(row = {}, providerWebhooks = []) {
     form.capturedLeads = Math.max(0, Number(webhook.received_count) || 0);
     form.lastLeadAt = webhook.last_received_at || form.lastLeadAt;
   }
-  const syncIssues = (Array.isArray(publicData.syncIssues) ? publicData.syncIssues : []).slice(0, 10).map((issue) => ({
-    area: shortText(issue?.area, 40),
+  const syncIssues = (Array.isArray(publicData.syncIssues) ? publicData.syncIssues : []).slice(0, 25).map((issue) => ({
+    area: shortText(issue?.area, 200),
     message: shortText(issue?.message, 240),
   })).filter((issue) => issue.area && issue.message);
   const adSummary30d = publicData.adSummary30d && typeof publicData.adSummary30d === "object" ? {
@@ -159,6 +234,19 @@ export function publicConnectionState(row = {}, providerWebhooks = []) {
     clicks: Math.max(0, Number(publicData.adSummary30d.clicks) || 0),
     leads: Math.max(0, Number(publicData.adSummary30d.leads) || 0),
   } : null;
+  const snapchatCampaignSummaryLifetime = publicData.campaignSummaryLifetime && typeof publicData.campaignSummaryLifetime === "object" ? {
+    period: "lifetime",
+    currency: shortText(publicData.campaignSummaryLifetime.currency, 10) || null,
+    spend: Number.isFinite(Number(publicData.campaignSummaryLifetime.spend)) ? Math.max(0, Number(publicData.campaignSummaryLifetime.spend)) : null,
+    impressions: Math.max(0, Number(publicData.campaignSummaryLifetime.impressions) || 0),
+    swipes: Math.max(0, Number(publicData.campaignSummaryLifetime.swipes) || 0),
+    videoViews: Math.max(0, Number(publicData.campaignSummaryLifetime.videoViews) || 0),
+    completedViews: Math.max(0, Number(publicData.campaignSummaryLifetime.completedViews) || 0),
+    nativeLeads: Math.max(0, Number(publicData.campaignSummaryLifetime.nativeLeads) || 0),
+    purchases: Math.max(0, Number(publicData.campaignSummaryLifetime.purchases) || 0),
+    signUps: Math.max(0, Number(publicData.campaignSummaryLifetime.signUps) || 0),
+    conversions: Math.max(0, Number(publicData.campaignSummaryLifetime.conversions) || 0),
+  } : null;
   const accountName = profile.name || profile.username || organizations[0]?.name || null;
   return {
     status: row.status || "not_connected",
@@ -169,6 +257,10 @@ export function publicConnectionState(row = {}, providerWebhooks = []) {
       username: profile.username || null,
       followers: Number(metrics.totalFollowers) || 0,
       adAccounts: Number(metrics.adAccounts) || 0,
+      campaignCount: Number(metrics.campaigns) || snapchatCampaigns.length,
+      activeCampaigns: Number(metrics.activeCampaigns) || snapchatCampaigns.filter((campaign) => campaign.status === "ACTIVE").length,
+      adSquadCount: Number(metrics.adSquads) || snapchatAdSquads.length,
+      adCount: Number(metrics.ads) || snapchatAds.length,
       pageCount: Number(metrics.pages) || pages.length,
       instagramAccountCount: Number(metrics.instagramAccounts) || instagramAccounts.length,
       leadFormCount: Number(metrics.leadForms) || leadForms.length,
@@ -202,6 +294,10 @@ export function publicConnectionState(row = {}, providerWebhooks = []) {
       adAccountsDetail: adAccounts,
       leadForms,
       adSummary30d,
+      snapchatCampaigns,
+      snapchatAdSquads,
+      snapchatAds,
+      snapchatCampaignSummaryLifetime,
       syncIssues,
       syncedAt: row.metadata?.syncedAt || row.updated_at || null,
     } : null,

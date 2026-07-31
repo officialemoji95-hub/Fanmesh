@@ -616,6 +616,68 @@ function renderSnapchatReadiness(catalog) {
     ${source.callbackUrl ? `<code>${escapeHtml(source.callbackUrl)}</code>` : ""}`;
 }
 
+function renderSnapchatPerformance(catalog) {
+  const target = document.querySelector("#snapchat-performance");
+  const source = catalog.social.find((item) => item.platform === "snapchat");
+  if (source?.status !== "connected" || !source.account) {
+    target.hidden = true;
+    target.innerHTML = "";
+    return;
+  }
+  const account = source.account;
+  const campaigns = (Array.isArray(account.snapchatCampaigns) ? account.snapchatCampaigns : [])
+    .slice()
+    .sort((first, second) => Date.parse(second.updatedAt || second.createdAt || "") - Date.parse(first.updatedAt || first.createdAt || ""));
+  const adSquads = Array.isArray(account.snapchatAdSquads) ? account.snapchatAdSquads : [];
+  const ads = Array.isArray(account.snapchatAds) ? account.snapchatAds : [];
+  const summary = account.snapchatCampaignSummaryLifetime || {};
+  const issues = (Array.isArray(account.syncIssues) ? account.syncIssues : []).filter((issue) => /campaign|ad_squad|ads:|campaign_stats/.test(issue.area || ""));
+  const rows = campaigns.slice(0, 12).map((campaign) => {
+    const squads = adSquads.filter((item) => item.campaignId === campaign.id);
+    const campaignAds = ads.filter((item) => item.campaignId === campaign.id);
+    const stats = campaign.stats || {};
+    const objective = campaign.objectiveType || campaign.objective || "Objective unavailable";
+    const delivery = campaign.deliveryStatus?.[0] || campaign.creationState || campaign.status || "Status unavailable";
+    const squadDetails = squads.slice(0, 3).map((squad) => `<span><b>${escapeHtml(squad.name)}</b><small>${escapeHtml(capabilityLabel(squad.optimizationGoal || squad.type || squad.status || "ad squad"))}</small></span>`).join("");
+    const adDetails = campaignAds.slice(0, 4).map((ad) => `<span><b>${escapeHtml(ad.name)}</b><small>${escapeHtml(capabilityLabel(ad.reviewStatus || ad.status || ad.type || "ad"))}</small></span>`).join("");
+    return `<article class="snapchat-campaign-row">
+      <div class="snapchat-campaign-heading">
+        <div><strong>${escapeHtml(campaign.name)}</strong><small>${escapeHtml(campaign.adAccountName)} · ${escapeHtml(capabilityLabel(objective))} · updated ${escapeHtml(shortDate(campaign.updatedAt || campaign.createdAt))}</small></div>
+        <span class="status ${campaign.status === "ACTIVE" ? "good" : "warning"}">${escapeHtml(capabilityLabel(delivery))}</span>
+      </div>
+      <div class="snapchat-campaign-metrics">
+        <span><small>Spend · lifetime</small><strong>${escapeHtml(formatMoney(stats.spend, campaign.currency))}</strong></span>
+        <span><small>Impressions</small><strong>${numberFormatter.format(stats.impressions || 0)}</strong></span>
+        <span><small>Swipe-ups</small><strong>${numberFormatter.format(stats.swipes || 0)}</strong></span>
+        <span><small>Native leads</small><strong>${numberFormatter.format(stats.nativeLeads || 0)}</strong></span>
+        <span><small>Purchases + sign-ups</small><strong>${numberFormatter.format(stats.conversions || 0)}</strong></span>
+      </div>
+      <div class="snapchat-delivery-counts"><b>${numberFormatter.format(squads.length)}</b> ad squad${squads.length === 1 ? "" : "s"} · <b>${numberFormatter.format(campaignAds.length)}</b> ad${campaignAds.length === 1 ? "" : "s"}</div>
+      ${squadDetails ? `<div class="snapchat-entity-list"><small>Ad squads</small>${squadDetails}</div>` : ""}
+      ${adDetails ? `<div class="snapchat-entity-list"><small>Ads</small>${adDetails}</div>` : ""}
+    </article>`;
+  }).join("");
+  const issueList = issues.map((issue) => `<li><strong>${escapeHtml(capabilityLabel(issue.area.split(":")[0]))}:</strong> ${escapeHtml(issue.message)}</li>`).join("");
+  target.hidden = false;
+  target.innerHTML = `
+    <div class="snapchat-performance-heading">
+      <div><p class="eyebrow">Snapchat Ads reporting</p><h3>Campaigns, delivery structure, and paid results</h3></div>
+      <span class="status ${issues.length || !campaigns.length ? "warning" : "good"}">${campaigns.length ? `${numberFormatter.format(campaigns.length)} campaign${campaigns.length === 1 ? "" : "s"} synced` : "No campaigns returned"}</span>
+    </div>
+    <div class="snapchat-performance-metrics">
+      <span><small>Spend · lifetime</small><strong>${escapeHtml(formatMoney(summary.spend, summary.currency))}</strong></span>
+      <span><small>Impressions</small><strong>${numberFormatter.format(summary.impressions || 0)}</strong></span>
+      <span><small>Swipe-ups</small><strong>${numberFormatter.format(summary.swipes || 0)}</strong></span>
+      <span><small>Native leads</small><strong>${numberFormatter.format(summary.nativeLeads || 0)}</strong></span>
+      <span><small>Purchases + sign-ups</small><strong>${numberFormatter.format(summary.conversions || 0)}</strong></span>
+      <span><small>Ads inventoried</small><strong>${numberFormatter.format(account.adCount || ads.length)}</strong></span>
+    </div>
+    <div class="snapchat-campaign-list">${rows || `<p class="platform-empty">The Snapchat account is authorized, but the Marketing API returned no campaigns. Confirm the campaign belongs to one of the connected ad accounts, then sync again.</p>`}</div>
+    ${campaigns.length > 12 ? `<p class="snapchat-more">Showing the 12 most recently updated campaigns out of ${numberFormatter.format(campaigns.length)} synchronized.</p>` : ""}
+    ${issueList ? `<div class="meta-sync-issues"><strong>Snapchat access notes</strong><ul>${issueList}</ul></div>` : ""}
+    <p class="platform-method">Lifetime campaign reporting comes from Snapchat’s official Marketing API and is normally refreshed by Snap about every 15 minutes. Spend is converted from micro-currency; purchases and sign-ups are shown as separate tracked conversion types and summed only in the clearly labeled total.</p>`;
+}
+
 function renderOrganicPulse(organic = {}) {
   const list = document.querySelector("#organic-post-list");
   const summary = document.querySelector("#organic-summary");
@@ -664,7 +726,7 @@ function renderConnections(catalog) {
       <p>${escapeHtml(source.caveat || "Import only records you are authorized to use.")}</p>
       <div class="source-tags">${source.capabilities.slice(0, 2).map((capability) => `<span>${escapeHtml(capabilityLabel(capability))}</span>`).join("")}</div>
       ${source.status === "connected" ? `
-        <div class="connection-summary"><strong>${source.platform === "snapchat" ? `${numberFormatter.format(source.account?.capturedLeads || 0)} captured leads` : `${numberFormatter.format(source.account?.followers || 0)} followers`}</strong><span>${source.platform === "tiktok" ? `${numberFormatter.format(source.account?.recentVideoCount || 0)} posts · ${numberFormatter.format(source.account?.averageViews || 0)} avg views` : source.platform === "meta" ? `${numberFormatter.format(source.account?.pageCount || 0)} Pages · ${numberFormatter.format(source.account?.instagramAccountCount || 0)} Instagram` : source.platform === "snapchat" ? `${numberFormatter.format(source.account?.adAccounts || 0)} ad accounts · ${numberFormatter.format(source.account?.leadFormCount || 0)} lead forms` : `${numberFormatter.format(source.account?.adAccounts || 0)} ad accounts`}</span></div>
+        <div class="connection-summary"><strong>${source.platform === "snapchat" ? `${numberFormatter.format(source.account?.campaignCount || 0)} campaigns` : `${numberFormatter.format(source.account?.followers || 0)} followers`}</strong><span>${source.platform === "tiktok" ? `${numberFormatter.format(source.account?.recentVideoCount || 0)} posts · ${numberFormatter.format(source.account?.averageViews || 0)} avg views` : source.platform === "meta" ? `${numberFormatter.format(source.account?.pageCount || 0)} Pages · ${numberFormatter.format(source.account?.instagramAccountCount || 0)} Instagram` : source.platform === "snapchat" ? `${numberFormatter.format(source.account?.adAccounts || 0)} ad accounts · ${numberFormatter.format(source.account?.adCount || 0)} ads · ${numberFormatter.format(source.account?.leadFormCount || 0)} lead forms` : `${numberFormatter.format(source.account?.adAccounts || 0)} ad accounts`}</span></div>
         <div class="connection-actions"><button class="connection-button" type="button" data-connection-sync="${escapeHtml(source.platform)}">Sync now</button><button class="connection-link" type="button" data-connection-disconnect="${escapeHtml(source.platform)}">Disconnect</button></div>
       ` : source.configured && source.connectUrl ? `
         <a class="connection-button" href="${escapeHtml(source.connectUrl)}">Connect ${escapeHtml(source.label)} ↗</a>
@@ -674,6 +736,7 @@ function renderConnections(catalog) {
     </article>
   `).join("");
   renderSnapchatReadiness(catalog);
+  renderSnapchatPerformance(catalog);
   renderMetaPerformance(catalog);
   renderMetaLeadImport(catalog);
   renderSnapchatLeadCapture(catalog);

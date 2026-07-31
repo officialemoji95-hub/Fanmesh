@@ -1,4 +1,4 @@
-# FanMesh API v0.14
+# FanMesh API v0.15
 
 The prototype serves JSON under `/api`. Responses use `{ "data": ... }` for successful resources and `{ "error": { "message": ... } }` for errors. When Supabase is configured, workspace endpoints require the secure creator session cookie and PostgreSQL row-level security isolates every workspace. When Supabase is unconfigured, dashboard reads use clearly labeled demo data.
 
@@ -35,7 +35,7 @@ Returns the audience snapshot, tier distribution, reach-health ratios, and recom
 
 ### `GET /api/v1/connections`
 
-Returns the social-account and lead-source capability catalog without access tokens. A connected TikTok account includes its safe profile summary, latest-public-post performance metrics, and up to 20 normalized public video records returned by the official `video.list` scope.
+Returns the social-account and lead-source capability catalog without access tokens. A connected TikTok account includes its safe profile summary, latest-public-post performance metrics, and up to 20 normalized public video records returned by the official `video.list` scope. A connected Snapchat account includes its authorized ad-account summaries, campaigns, ad squads, ads, lifetime campaign delivery metrics, lead-form inventory, and explicit partial-access issues. Snapchat spend is converted from microcurrency on the server; raw tokens, creative IDs, and internal response fields are excluded.
 
 ### `POST /api/v1/score`
 
