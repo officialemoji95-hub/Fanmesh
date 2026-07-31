@@ -2,7 +2,7 @@ export const openApiDocument = {
   openapi: "3.1.0",
   info: {
     title: "FanMesh API",
-    version: "0.13.0",
+    version: "0.14.0",
     description: "Audience intelligence API for consented fan relationships.",
   },
   servers: [{ url: "/api/v1" }],
@@ -290,7 +290,13 @@ export const openApiDocument = {
           content: { "application/json": { schema: {
             type: "object",
             required: ["rows"],
-            properties: { rows: { type: "array", maxItems: 1000, items: { type: "object" } } },
+            properties: {
+              source: { type: "string", enum: ["meta_ads", "tiktok_ads", "snapchat_ads", "x_ads", "google_ads", "youtube_ads", "threads_ads", "csv"] },
+              rows: { type: "array", maxItems: 1000, items: { type: "object" } },
+              confirmedAuthorized: { type: "boolean" },
+              confirmedConsent: { type: "boolean" },
+              consentChannels: { type: "array", items: { type: "string", enum: ["email", "sms"] } },
+            },
           } } },
         },
         responses: { 200: { description: "Import preview" }, 400: { description: "Invalid or unconsented rows" } },
