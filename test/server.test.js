@@ -33,7 +33,7 @@ async function dispatch({ method = "GET", url = "/", body = "", handler = handle
 test("health endpoint reports an operational service", async () => {
   const response = await dispatch({ url: "/api/health" });
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.10.0", database: "demo" });
+  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.11.0", database: "demo" });
 });
 
 test("public legal pages explain FanMesh data and platform rules", async () => {
@@ -219,6 +219,122 @@ test("configured activation preparation uses workspace counts and persists only 
   assert.equal(savedPlan.audience.selectedEligible, 25);
   assert.equal(savedPlan.audience.reachableNow, 23);
   assert.equal(savedPlan.delivery.sms.status, "provider_connection_required");
+});
+
+test("outreach preview returns only cohort counts and provider readiness", async () => {
+  const handler = createRequestHandler({
+    authService: {
+      config: { configured: true },
+      async session() {
+        return { data: { authenticated: true, accessToken: "token", user: { id: "user-1" } }, cookies: [] };
+      },
+    },
+    workspaceStore: {
+      async getOutreachCandidates() {
+        return {
+          frequencyHours: 48,
+          candidates: [{
+            id: "fan-1",
+            display_name: "Private fan",
+            email: "private@example.com",
+            consented_channels: ["email"],
+            source_provenance: { sources: [{ source: "meta_ads" }] },
+            recent_channels: [],
+          }],
+        };
+      },
+    },
+    oauthService: { catalog() { return []; } },
+    outreachService: {
+      readiness: { email: { provider: "resend", configured: true, explanation: "Ready" } },
+    },
+  });
+  const response = await dispatch({
+    method: "POST",
+    url: "/api/v1/outreach/preview",
+    handler,
+    body: JSON.stringify({
+      title: "New post",
+      contentUrl: "https://example.com/post",
+      message: "This one is for you.",
+      channels: ["email"],
+      sources: ["meta_ads"],
+      confirmedOwnedContent: true,
+      confirmedAudienceRights: true,
+    }),
+  });
+  const body = response.json();
+  assert.equal(response.statusCode, 200);
+  assert.equal(body.data.audience.selected, 1);
+  assert.equal(body.data.launchable, true);
+  assert.equal(body.meta.contactFieldsReturned, false);
+  assert.equal(JSON.stringify(body).includes("private@example.com"), false);
+});
+
+test("confirmed outreach launch persists receipts and reports actual accepted messages", async () => {
+  let createdPlan;
+  let savedDeliveries;
+  const handler = createRequestHandler({
+    authService: {
+      config: { configured: true },
+      async session() {
+        return { data: { authenticated: true, accessToken: "token", user: { id: "user-1" } }, cookies: [] };
+      },
+    },
+    workspaceStore: {
+      async getOutreachCandidates() {
+        return {
+          frequencyHours: 48,
+          candidates: [{
+            id: "fan-1",
+            email: "private@example.com",
+            consented_channels: ["email"],
+            source_provenance: { sources: [{ source: "google_ads" }] },
+            recent_channels: [],
+          }],
+        };
+      },
+      async createOutreachCampaign(user, token, plan) {
+        createdPlan = plan;
+        return { campaign: { id: "campaign-row-1" } };
+      },
+      async finishOutreachCampaign(user, token, campaignId, deliveries, summary) {
+        assert.equal(campaignId, "campaign-row-1");
+        savedDeliveries = deliveries;
+        return { status: "completed", sent: 1, failed: 0, ...summary };
+      },
+    },
+    oauthService: { catalog() { return []; } },
+    outreachService: {
+      readiness: { email: { provider: "resend", configured: true, explanation: "Ready" } },
+      async deliver(plan, recipients) {
+        assert.equal(recipients[0].address, "private@example.com");
+        return [{ fanId: "fan-1", channel: "email", provider: "resend", providerMessageId: "email-1", status: "sent" }];
+      },
+    },
+  });
+  const response = await dispatch({
+    method: "POST",
+    url: "/api/v1/outreach/send",
+    handler,
+    body: JSON.stringify({
+      campaignId: "out_1234567890abcdef",
+      title: "New post",
+      contentUrl: "https://example.com/post",
+      message: "This one is for you.",
+      channels: ["email"],
+      sources: ["google_ads"],
+      confirmedOwnedContent: true,
+      confirmedAudienceRights: true,
+      confirmedSend: true,
+    }),
+  });
+  const body = response.json();
+  assert.equal(response.statusCode, 201);
+  assert.equal(body.meta.messagesSent, 1);
+  assert.equal(createdPlan.id, "out_1234567890abcdef");
+  assert.equal(savedDeliveries[0].providerMessageId, "email-1");
+  assert.equal(JSON.stringify(body).includes("private@example.com"), false);
 });
 
 test("activation preparation rejects unsafe destinations", async () => {
