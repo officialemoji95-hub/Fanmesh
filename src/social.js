@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 export const SOCIAL_PLATFORMS = ["instagram", "facebook", "tiktok", "youtube", "spotify"];
 export const LEAD_SOURCES = ["meta_ads", "facebook_export", "instagram_export", "tiktok_ads", "snapchat_ads", "x_ads", "google_ads", "youtube_ads", "threads_ads", "youtube_export", "csv"];
 export const IDENTITY_SOURCES = ["facebook_export", "instagram_export", "tiktok_export", "youtube_export"];
+const OFFICIAL_LEAD_EXPORT_SOURCES = new Set(["meta_ads", "tiktok_ads", "snapchat_ads", "x_ads", "google_ads", "youtube_ads", "threads_ads"]);
 
 const PLATFORM_CAPABILITIES = {
   meta: {
@@ -148,6 +149,20 @@ function consentChannels(value, { email, phone }) {
   return channels;
 }
 
+function normalizedFields(row = {}) {
+  return Object.fromEntries(Object.entries(row).map(([key, value]) => [
+    String(key).toLowerCase().replace(/[^a-z0-9]/g, ""),
+    value,
+  ]));
+}
+
+function field(fields, aliases) {
+  for (const alias of aliases) {
+    if (Object.hasOwn(fields, alias)) return fields[alias];
+  }
+  return undefined;
+}
+
 function invalid(index, reason) {
   return { row: index + 1, reason };
 }
@@ -176,20 +191,28 @@ export function getConnectionCatalog(statuses = {}, configuredProviders = []) {
 }
 
 export function normalizeLead(row = {}, index = 0, defaults = {}) {
-  const email = normalizeEmail(row.email);
-  const phone = normalizePhone(row.phone);
-  const name = text(row.name || row.fullName || row.displayName, 120);
-  const location = text(row.location, 160);
-  const source = normalizeSource(row.source || row.sourcePlatform || defaults.source || "csv");
-  const sourceId = text(row.sourceId || row.leadId || row.id, 160);
-  const consent = bool(row.consent || row.marketingConsent || row.optedIn);
-  const consentAt = text(row.consentAt || row.consent_at, 50);
-  const consentSource = text(row.consentSource || row.consent_source || source, 80);
-  const channels = consentChannels(row.consentChannels || row.consentChannel || row.channels, { email, phone });
+  const fields = normalizedFields(row);
+  const emailInput = field(fields, ["email", "emailaddress", "emailid"]);
+  const phoneInput = field(fields, ["phone", "phonenumber", "mobile", "mobilenumber", "mobilephone"]);
+  const firstName = text(field(fields, ["firstname", "givenname"]), 60);
+  const lastName = text(field(fields, ["lastname", "surname", "familyname"]), 60);
+  const email = normalizeEmail(emailInput);
+  const phone = normalizePhone(phoneInput);
+  const name = text(field(fields, ["name", "fullname", "displayname"]) || [firstName, lastName].filter(Boolean).join(" "), 120);
+  const location = text(field(fields, ["location", "city", "country"]), 160);
+  const source = normalizeSource(field(fields, ["source", "sourceplatform"]) || defaults.source || "csv");
+  const sourceId = text(field(fields, ["sourceid", "leadid", "leadidentifier", "id"]), 160);
+  const consent = bool(field(fields, ["consent", "marketingconsent", "optedin"]) ?? defaults.consent);
+  const consentAt = text(field(fields, ["consentat", "submittedat", "submissiontime", "createdat", "creationtime", "timestamp", "date"]) || defaults.consentAt, 50);
+  const consentSource = text(field(fields, ["consentsource", "disclosure", "formname"]) || defaults.consentSource || source, 80);
+  const channels = consentChannels(
+    field(fields, ["consentchannels", "consentchannel", "channels"]) || defaults.consentChannels,
+    { email, phone },
+  );
 
   if (!email && !phone) return { error: invalid(index, "a valid email or phone is required") };
-  if (row.email && !email) return { error: invalid(index, "email is not valid") };
-  if (row.phone && !phone) return { error: invalid(index, "phone must use 7–15 digits, optionally prefixed with +") };
+  if (emailInput && !email) return { error: invalid(index, "email is not valid") };
+  if (phoneInput && !phone) return { error: invalid(index, "phone must use 7–15 digits, optionally prefixed with +") };
   if (!LEAD_SOURCES.includes(source)) return { error: invalid(index, `source must be one of: ${LEAD_SOURCES.join(", ")}`) };
   if (!consent) return { error: invalid(index, "explicit marketing consent is required") };
   if (!consentAt || Number.isNaN(Date.parse(consentAt))) {
@@ -212,11 +235,11 @@ export function normalizeLead(row = {}, index = 0, defaults = {}) {
       source: source || "unknown",
       sourceId: sourceId || undefined,
       consent: { granted: true, at: new Date(consentAt).toISOString(), source: consentSource, channels },
-      campaignId: text(row.campaignId || row.campaign_id, 100) || undefined,
+      campaignId: text(field(fields, ["campaignid", "campaign"]), 100) || undefined,
       utm: {
-        source: text(row.utmSource || row.utm_source, 100) || undefined,
-        medium: text(row.utmMedium || row.utm_medium, 100) || undefined,
-        campaign: text(row.utmCampaign || row.utm_campaign, 100) || undefined,
+        source: text(field(fields, ["utmsource"]), 100) || undefined,
+        medium: text(field(fields, ["utmmedium"]), 100) || undefined,
+        campaign: text(field(fields, ["utmcampaign"]), 100) || undefined,
       },
     },
   };
@@ -229,13 +252,26 @@ export function previewLeadImport(input = {}) {
 
   const source = normalizeSource(input.source || "csv");
   if (!LEAD_SOURCES.includes(source)) throw new TypeError(`source must be one of: ${LEAD_SOURCES.join(", ")}`);
+  const creatorAttested = OFFICIAL_LEAD_EXPORT_SOURCES.has(source)
+    && input.confirmedAuthorized === true
+    && input.confirmedConsent === true;
+  const attestedChannels = consentChannels(input.consentChannels, {});
+  if (creatorAttested && !attestedChannels.length) {
+    throw new TypeError("Choose at least one contact channel permitted by the lead form disclosure");
+  }
+  const defaults = creatorAttested ? {
+    source,
+    consent: true,
+    consentSource: `${source}:official_export:creator_attested`,
+    consentChannels: attestedChannels,
+  } : { source };
 
   const valid = [];
   const invalidRows = [];
   const seen = new Set();
   let duplicates = 0;
   input.rows.forEach((row, index) => {
-    const result = normalizeLead(row, index, { source });
+    const result = normalizeLead(row, index, defaults);
     if (result.error) {
       invalidRows.push(result.error);
       return;
@@ -266,6 +302,7 @@ export function previewLeadImport(input = {}) {
       withPhone: valid.filter((lead) => lead.phone).length,
       sourceCounts,
       consentRequired: true,
+      creatorAttested,
     },
   };
 }
