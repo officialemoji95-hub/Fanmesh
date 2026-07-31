@@ -20,6 +20,8 @@ This repository contains a deployable proof of concept. Without Supabase configu
 - Meta Page and Instagram professional discovery, per-post views/reach/interaction health, 30-day ad-account results, lead-form inventory, and actionable permission gaps
 - Server-side Meta Instant Form lead preview and consent-confirmed import with no contact fields returned in the preview response
 - Snapchat organization/ad-account discovery, Lead Generation Form inventory, and HMAC-verified live lead capture with replay protection and deterministic deduplication
+- A safe Snapchat activation checklist that reports each missing configuration gate without exposing credentials
+- Creator-attested Snapchat Ads CSV normalization for common email, phone, name, lead-ID, submission-time, and campaign headers
 - TikTok latest-public-post sync with explainable average views, median views, and engagement-per-view metrics
 - Consent-checked CSV import with preview, deterministic identity keys, deduplication, provenance, and private-workspace persistence
 - Official Facebook, Instagram, TikTok, and YouTube follower-download ingestion from JSON/CSV, with large-file batching and a strict platform-only activation boundary
