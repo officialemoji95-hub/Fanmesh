@@ -14,6 +14,9 @@ const REQUEST_TIMEOUT_MS = 15000;
 const DEFAULT_META_GRAPH_VERSION = "v25.0";
 const MAX_META_LEAD_FORMS = 10;
 const MAX_META_LEADS = 100;
+const MAX_SNAPCHAT_AD_ACCOUNTS = 20;
+const MAX_SNAPCHAT_LEAD_FORMS = 100;
+const MAX_SNAPCHAT_WEBHOOK_FORMS = 10;
 
 export class OAuthError extends Error {
   constructor(message, statusCode = 400) {
@@ -48,8 +51,8 @@ const PROVIDERS = Object.freeze({
     clientSecretKey: "SNAPCHAT_CLIENT_SECRET",
     scopesKey: "SNAPCHAT_OAUTH_SCOPES",
     scopes: ["snapchat-marketing-api"],
-    capabilities: ["Organizations", "Snap ad accounts", "Campaign reporting"],
-    caveat: "Public Profile metrics require Snapchat allowlisting and the snapchat-profile-api scope.",
+    capabilities: ["Organizations", "Snap ad accounts", "Lead form webhooks", "Campaign reporting"],
+    caveat: "Lead forms require Marketing API access; live lead capture also requires Organization Admin access. Public Profile metrics require separate allowlisting.",
   },
   x: {
     label: "X",
@@ -828,29 +831,87 @@ async function syncTikTok(token, fetchImpl) {
   };
 }
 
+function snapchatEntities(payload, plural, singular) {
+  const rows = Array.isArray(payload?.[plural])
+    ? payload[plural]
+    : Array.isArray(payload?.data) ? payload.data : [];
+  return rows.map((row) => row?.[singular] || row).filter((row) => row && typeof row === "object");
+}
+
+function normalizedSnapchatLeadForm(form, webhookState = {}) {
+  const fields = (Array.isArray(form?.form_fields) ? form.form_fields : [])
+    .map((field) => text(field?.type, 60).toUpperCase())
+    .filter(Boolean);
+  const disclosures = Array.isArray(form?.legal_disclosures?.consent_form_fields)
+    ? form.legal_disclosures.consent_form_fields
+    : [];
+  const state = webhookState[text(form?.id, 160)] || {};
+  return {
+    id: text(form?.id, 160),
+    adAccountId: text(form?.ad_account_id, 160),
+    name: text(form?.name, 160) || text(form?.title, 160) || "Untitled Snap lead form",
+    title: text(form?.title, 160),
+    createdAt: form?.created_at || null,
+    updatedAt: form?.updated_at || null,
+    contactFields: fields.filter((field) => ["EMAIL", "PHONE_NUMBER"].includes(field)),
+    requiredConsentCount: disclosures.filter((item) => item?.required === true).length,
+    hasLegalDisclosure: Boolean(text(form?.legal_disclosures?.description, 1000) || disclosures.length),
+    webhookStatus: state.status || "not_configured",
+    capturedLeads: Math.max(0, Number(state.receivedCount) || 0),
+    lastLeadAt: state.lastReceivedAt || null,
+  };
+}
+
 async function syncSnapchat(token, fetchImpl) {
   const payload = await platformRequest(fetchImpl, "https://adsapi.snapchat.com/v1/me/organizations?with_ad_accounts=true", {
     headers: { authorization: `Bearer ${token.accessToken}` },
   });
-  const organizations = (payload.organizations || payload.data || []).map((organization) => ({
-    id: organization.id,
-    name: organization.name,
-    adAccounts: (organization.ad_accounts || organization.adaccounts || []).map((account) => ({
-      id: account.id,
-      name: account.name,
-      status: account.status,
-      currency: account.currency,
-      timezone: account.timezone,
-    })),
+  const storedWebhooks = token.providerAssets?.snapchatWebhooks || {};
+  const organizations = snapchatEntities(payload, "organizations", "organization").map((organization) => ({
+    id: text(organization.id, 160),
+    name: text(organization.name, 160) || "Untitled Snap organization",
+    roles: (Array.isArray(organization.roles) ? organization.roles : []).map((role) => text(role, 40)).filter(Boolean),
+    adAccounts: (organization.ad_accounts || organization.adaccounts || [])
+      .map((account) => account?.ad_account || account?.adaccount || account)
+      .filter((account) => account?.id)
+      .slice(0, MAX_SNAPCHAT_AD_ACCOUNTS)
+      .map((account) => ({
+        id: text(account.id, 160),
+        name: text(account.name, 160) || "Untitled Snap ad account",
+        status: text(account.status, 40),
+        currency: text(account.currency, 10),
+        timezone: text(account.timezone, 80),
+        roles: (Array.isArray(account.roles) ? account.roles : []).map((role) => text(role, 40)).filter(Boolean),
+      })),
+  })).filter((organization) => organization.id);
+  const adAccounts = organizations.flatMap((organization) => organization.adAccounts).slice(0, MAX_SNAPCHAT_AD_ACCOUNTS);
+  const syncIssues = [];
+  const formBatches = await Promise.all(adAccounts.map(async (account) => {
+    try {
+      const formPayload = await platformRequest(fetchImpl, `https://adsapi.snapchat.com/v1/adaccounts/${encodeURIComponent(account.id)}/lead_generation_forms`, {
+        headers: { authorization: `Bearer ${token.accessToken}` },
+      });
+      return snapchatEntities(formPayload, "lead_generation_forms", "lead_generation_form")
+        .map((form) => normalizedSnapchatLeadForm(form, storedWebhooks))
+        .filter((form) => form.id);
+    } catch (error) {
+      syncIssues.push({ area: `lead_forms:${account.id}`, message: text(error.message, 240) || "Snap lead forms could not be read." });
+      return [];
+    }
   }));
+  const leadForms = formBatches.flat().slice(0, MAX_SNAPCHAT_LEAD_FORMS);
   return {
     externalAccountId: organizations[0]?.id || "snapchat-user",
-    publicData: { organizations },
-    privateData: {},
+    publicData: { organizations, leadForms, syncIssues },
+    privateData: token.providerAssets || {},
     metrics: {
       totalFollowers: 0,
       averageViews: 0,
-      adAccounts: organizations.reduce((sum, organization) => sum + organization.adAccounts.length, 0),
+      organizations: organizations.length,
+      adAccounts: adAccounts.length,
+      leadForms: leadForms.length,
+      liveLeadForms: leadForms.filter((form) => form.webhookStatus === "active").length,
+      capturedLeads: leadForms.reduce((sum, form) => sum + form.capturedLeads, 0),
     },
   };
 }
@@ -1104,6 +1165,120 @@ export function createOAuthService({
     };
   }
 
+  async function configureSnapchatLeadWebhooks(session, input = {}) {
+    const providerConfig = requireReady("snapchat");
+    if (input.confirmedAuthorized !== true || input.confirmedConsent !== true) {
+      throw new OAuthError("Confirm that the selected Snap forms are yours and their disclosure permits creator updates", 400);
+    }
+    if (typeof workspaceStore.saveProviderWebhook !== "function") {
+      throw new OAuthError("Snapchat live-lead storage is not available", 503);
+    }
+    const channels = [...new Set((Array.isArray(input.consentChannels) ? input.consentChannels : [])
+      .map((channel) => text(channel, 20).toLowerCase())
+      .filter((channel) => ["email", "sms"].includes(channel)))];
+    if (!channels.length) throw new OAuthError("Choose at least one consented contact channel", 400);
+    const requestedIds = [...new Set((Array.isArray(input.formIds) ? input.formIds : [])
+      .map((value) => text(value, 160))
+      .filter(Boolean))];
+    if (!requestedIds.length) throw new OAuthError("Select at least one Snap lead form", 400);
+    if (requestedIds.length > MAX_SNAPCHAT_WEBHOOK_FORMS) {
+      throw new OAuthError(`Select no more than ${MAX_SNAPCHAT_WEBHOOK_FORMS} Snap forms at a time`, 400);
+    }
+
+    const { connection, token } = await connectedAuthorization(providerConfig, session);
+    const scopes = new Set([...(connection.scopes || []), ...(token.grantedScopes || [])]);
+    if (!scopes.has("snapchat-marketing-api")) {
+      throw new OAuthError("Reconnect Snapchat and grant snapchat-marketing-api before enabling live leads", 403);
+    }
+    const availableForms = (Array.isArray(connection.metadata?.public?.leadForms) ? connection.metadata.public.leadForms : [])
+      .slice(0, MAX_SNAPCHAT_LEAD_FORMS);
+    const selectedForms = requestedIds.map((id) => availableForms.find((form) => form.id === id));
+    if (selectedForms.some((form) => !form)) throw new OAuthError("A selected Snap form is not part of this authorized connection", 403);
+    for (const form of selectedForms) {
+      const availableChannels = new Set((form.contactFields || []).map((field) => field === "EMAIL" ? "email" : field === "PHONE_NUMBER" ? "sms" : ""));
+      if (!channels.some((channel) => availableChannels.has(channel))) {
+        throw new OAuthError(`${form.name || "A selected Snap form"} does not collect the selected contact channel`, 400);
+      }
+    }
+
+    const storedWebhooks = { ...(token.providerAssets?.snapchatWebhooks || {}) };
+    const configured = [];
+    for (const form of selectedForms) {
+      if (storedWebhooks[form.id]?.status === "active") {
+        configured.push({ formId: form.id, name: form.name, status: "already_active" });
+        continue;
+      }
+      const pathKey = randomBytes(24).toString("base64url");
+      const webhookUrl = `${providerConfig.baseUrl}/api/v1/webhooks/snapchat/leads/${pathKey}`;
+      let integration = null;
+      try {
+        const payload = await platformRequest(fetchImpl, "https://adsapi.snapchat.com/v1/lead_gen/integrations/public_webhook", {
+          method: "POST",
+          headers: { authorization: `Bearer ${token.accessToken}`, "content-type": "application/json" },
+          body: JSON.stringify({ webhook_integrations: [{ form_id: form.id, webhook_url: webhookUrl }] }),
+        });
+        const rows = Array.isArray(payload.webhookIntegrations)
+          ? payload.webhookIntegrations
+          : Array.isArray(payload.webhook_integrations) ? payload.webhook_integrations : [];
+        integration = rows[0]?.webhookIntegration || rows[0]?.webhook_integration || rows[0];
+        const integrationId = text(integration?.integrationId || integration?.integration_id, 160);
+        const hmacSecret = text(integration?.hmacSecret || integration?.hmac_secret, 500);
+        if (!integrationId || !hmacSecret) throw new OAuthError("Snapchat did not return a verifiable webhook integration", 502);
+        const allowedChannels = channels.filter((channel) => (form.contactFields || []).includes(channel === "email" ? "EMAIL" : "PHONE_NUMBER"));
+        await workspaceStore.saveProviderWebhook(session.user, session.accessToken, {
+          platform: "snapchat",
+          pathKey,
+          externalFormId: form.id,
+          externalAccountId: form.adAccountId,
+          integrationId,
+          encryptedSecret: vault.seal({ hmacSecret }),
+          consentedChannels: allowedChannels,
+          status: "active",
+        });
+        storedWebhooks[form.id] = { pathKey, integrationId, status: "active", receivedCount: 0, lastReceivedAt: null };
+        configured.push({ formId: form.id, name: form.name, status: "active" });
+      } catch (error) {
+        const integrationId = text(integration?.integrationId || integration?.integration_id, 160);
+        if (integrationId) {
+          try {
+            await platformRequest(fetchImpl, `https://adsapi.snapchat.com/v1/lead_gen/integrations/${encodeURIComponent(integrationId)}`, {
+              method: "DELETE",
+              headers: { authorization: `Bearer ${token.accessToken}` },
+            });
+          } catch {
+            // Preserve the original configuration failure.
+          }
+        }
+        throw error;
+      }
+    }
+
+    const publicData = connection.metadata?.public || {};
+    const leadForms = (publicData.leadForms || []).map((form) => storedWebhooks[form.id]
+      ? { ...form, webhookStatus: "active", capturedLeads: Number(storedWebhooks[form.id].receivedCount) || 0, lastLeadAt: storedWebhooks[form.id].lastReceivedAt || null }
+      : form);
+    const providerAssets = { ...(token.providerAssets || {}), snapchatWebhooks: storedWebhooks };
+    await workspaceStore.saveSourceConnection(session.user, session.accessToken, {
+      platform: "snapchat",
+      status: "connected",
+      externalAccountId: connection.external_account_id,
+      scopes: connection.scopes || providerConfig.scopes,
+      metadata: {
+        ...connection.metadata,
+        public: { ...publicData, leadForms },
+        metrics: {
+          ...(connection.metadata?.metrics || {}),
+          leadForms: leadForms.length,
+          liveLeadForms: leadForms.filter((form) => form.webhookStatus === "active").length,
+          capturedLeads: leadForms.reduce((sum, form) => sum + (Number(form.capturedLeads) || 0), 0),
+        },
+        credentials: vault.seal({ ...token, providerAssets }),
+        syncedAt: new Date(now()).toISOString(),
+      },
+    });
+    return { provider: "snapchat", configured, webhookCount: configured.length };
+  }
+
   async function disconnect(provider, session) {
     const providerConfig = config(provider);
     if (!PROVIDERS[provider]) throw new OAuthError("Unsupported social platform", 404);
@@ -1117,7 +1292,7 @@ export function createOAuthService({
     return { provider, label: providerConfig.label, status: "revoked" };
   }
 
-  return Object.freeze({ begin, callback, catalog, disconnect, fetchMetaLeadImport, sync, vault });
+  return Object.freeze({ begin, callback, catalog, configureSnapchatLeadWebhooks, disconnect, fetchMetaLeadImport, sync, vault });
 }
 
 export { PROVIDERS, STATE_COOKIE };
