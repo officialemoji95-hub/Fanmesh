@@ -48,7 +48,7 @@ FanMesh becomes the identity and intelligence layer between a creator and the pl
 FanMesh completes one measurable provider loop before widening the surface area:
 
 1. **Meta foundation** — Facebook Pages, Instagram professional insights, Meta ad accounts, Instant Forms, token lifecycle, authorized lead import, and attribution established the shared provider contract.
-2. **Snapchat Business now** — corrected organization/ad-account discovery, Lead Generation Form inventory, HMAC-verified live submissions, replay protection, deduplication, and consent provenance; campaign reporting follows on the same adapter.
+2. **Snapchat Business now** — corrected organization/ad-account discovery, visible activation diagnostics, Lead Generation Form inventory, creator-attested historical CSV normalization, HMAC-verified live submissions, replay protection, deduplication, and consent provenance; campaign reporting follows on the same adapter.
 3. **Expansion lane** — TikTok for Business, Google/YouTube Ads, X Ads, and Threads reuse the same OAuth, sync-health, consent-provenance, and attribution contract.
 
 The provider cards and OAuth foundation may appear before a provider is production-complete. FanMesh labels that state honestly instead of presenting a configured login button as a finished data integration.
