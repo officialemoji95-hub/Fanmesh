@@ -34,7 +34,7 @@ async function dispatch({ method = "GET", url = "/", body = "", headers = {}, ha
 test("health endpoint reports an operational service", async () => {
   const response = await dispatch({ url: "/api/health" });
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.13.0", database: "demo" });
+  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.14.0", database: "demo" });
 });
 
 test("public legal pages explain FanMesh data and platform rules", async () => {
@@ -708,6 +708,47 @@ test("authorized lead commits are revalidated and persisted through the workspac
   assert.equal(response.statusCode, 201);
   assert.equal(response.json().meta.persisted, true);
   assert.equal(persistedPreview.summary.valid, 1);
+});
+
+test("creator-attested Snapchat export commits normalized official columns", async () => {
+  let persistedPreview;
+  const handler = createRequestHandler({
+    authService: {
+      config: { configured: true },
+      async session() {
+        return { data: { authenticated: true, accessToken: "token", user: { id: "user-1" } }, cookies: [] };
+      },
+    },
+    workspaceStore: {
+      async commitLeadImport(user, token, preview) {
+        assert.equal(user.id, "user-1");
+        assert.equal(token, "token");
+        persistedPreview = preview;
+        return { id: "run-snap-1", accepted: 1, rejected: 0, created: 1, updated: 0, consentEventsAdded: 2, status: "completed" };
+      },
+    },
+  });
+  const response = await dispatch({
+    method: "POST",
+    url: "/api/v1/imports/leads/commit",
+    body: JSON.stringify({
+      source: "snapchat_ads",
+      confirmedAuthorized: true,
+      confirmedConsent: true,
+      consentChannels: ["email", "sms"],
+      rows: [{
+        "Email Address": "fan@example.com",
+        "Mobile Number": "+2348012345678",
+        "Lead ID": "snap-1",
+        "Submission Time": "2026-07-31T12:00:00Z",
+      }],
+    }),
+    handler,
+  });
+  assert.equal(response.statusCode, 201);
+  assert.equal(persistedPreview.summary.valid, 1);
+  assert.equal(persistedPreview.summary.creatorAttested, true);
+  assert.equal(persistedPreview.valid[0].consent.source, "snapchat_ads:official_export:creator_attested");
 });
 
 test("official platform export preview returns identity counts without granting contact consent", async () => {
