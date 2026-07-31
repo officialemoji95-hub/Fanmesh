@@ -9,15 +9,16 @@ Create a Supabase **project**, then copy these two public project values from **
 - `SUPABASE_URL`
 - `SUPABASE_PUBLISHABLE_KEY` (the legacy `SUPABASE_ANON_KEY` also works)
 
-Do not provide a Supabase dashboard password or a `service_role`/secret key. FanMesh intentionally uses each signed-in user's access token so database row-level security remains active.
+Normal creator requests use each signed-in user's access token so database row-level security remains active. Live provider webhooks have no creator session, so the trusted FanMesh server also needs `SUPABASE_SERVICE_ROLE_KEY` to persist a submission only after verifying the provider signature, timestamp, form, ad account, and deduplication key. Store that key only as a server-side Render secret—never in GitHub, browser code, screenshots, or chat. Never provide a Supabase dashboard password.
 
 ## Initialize the database
 
 1. Open the Supabase SQL Editor.
-2. Run `supabase/migrations/202607290001_initial.sql` once.
+2. Run `supabase/migrations/202607290001_initial.sql`, `supabase/migrations/202607310001_lead_outreach.sql`, and `supabase/migrations/202607310002_snapchat_lead_webhooks.sql` in order.
 3. In Render, add `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` as secret environment variables.
-4. Redeploy the FanMesh service.
-5. Create the first FanMesh account from the sign-up screen.
+4. Add `SUPABASE_SERVICE_ROLE_KEY` only when enabling signed provider-webhook ingestion.
+5. Redeploy the FanMesh service.
+6. Create the first FanMesh account from the sign-up screen.
 
 The migration creates a profile and private creator workspace automatically for every new authenticated user. Audience, consent, connection, snapshot, import, and experiment records are isolated by PostgreSQL row-level security.
 
@@ -31,4 +32,5 @@ The migration creates a profile and private creator workspace automatically for 
 - Access and refresh tokens use `HttpOnly`, `SameSite=Lax` cookies.
 - Production cookies use the `Secure` flag.
 - The browser never receives Supabase keys or tokens through JavaScript-accessible storage.
+- The service-role key is never returned by an API and is used only on the server for verified provider-webhook reads/writes.
 - Expired access tokens are refreshed server-side when a valid refresh cookie exists.

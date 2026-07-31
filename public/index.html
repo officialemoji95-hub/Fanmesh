@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="FanMesh unifies consented fan relationships and turns them into useful audience intelligence.">
     <title>FanMesh — Own the relationship</title>
-    <link rel="stylesheet" href="/styles.css?v=0.12.0">
+    <link rel="stylesheet" href="/styles.css?v=0.13.0">
   </head>
   <body>
     <section class="auth-gate" id="auth-gate" aria-labelledby="auth-title" hidden>
@@ -116,11 +116,11 @@
           <section class="connector-roadmap" aria-labelledby="connector-roadmap-title">
             <div class="roadmap-heading">
               <div><p class="eyebrow">Integration rollout</p><h3 id="connector-roadmap-title">Finish one data loop. Reuse it everywhere.</h3></div>
-              <span class="status good">Meta first</span>
+              <span class="status good">Snapchat now</span>
             </div>
             <div class="roadmap-grid">
-              <article class="roadmap-card current"><span>01 · Current focus</span><strong>Meta end to end</strong><p>Complete Facebook Pages, Instagram insights, ad accounts, Instant Forms, token refresh, webhooks, and measured lead attribution.</p></article>
-              <article class="roadmap-card next"><span>02 · Next adapter</span><strong>Snapchat Business</strong><p>Connect organizations and ad accounts through the Marketing API, then add campaign reporting and authorized lead ingestion where Snap permits it.</p></article>
+              <article class="roadmap-card"><span>01 · Foundation</span><strong>Meta end to end</strong><p>Facebook Pages, Instagram insights, ad accounts, Instant Forms, token refresh, and authorized lead import establish the shared connection contract.</p></article>
+              <article class="roadmap-card current"><span>02 · Current focus</span><strong>Snapchat Business</strong><p>Discover organizations, ad accounts, and Lead Generation Forms, then receive new consented submissions through verified Snap webhooks.</p></article>
               <article class="roadmap-card"><span>03 · Expansion lane</span><strong>TikTok, Google/YouTube, X and Threads</strong><p>Apply the same connection, sync, consent provenance, health, and attribution contract after each developer product is approved.</p></article>
             </div>
           </section>
@@ -143,6 +143,24 @@
               <label class="authorization-check"><input id="meta-lead-authorized" type="checkbox"> I confirm I own these forms and their disclosure permits creator updates through the channels selected above.</label>
               <div class="meta-lead-actions"><button class="button secondary" type="submit">Preview Meta leads</button><button class="button primary" id="commit-meta-leads" type="button" disabled>Commit accepted leads ↗</button></div>
               <article class="import-preview" id="meta-lead-preview" aria-live="polite"><strong>No Meta leads previewed</strong><span>Select a form and confirm its consent disclosure first.</span></article>
+            </form>
+          </section>
+          <section class="snapchat-lead-capture" id="snapchat-lead-capture" aria-labelledby="snapchat-lead-capture-title" hidden>
+            <div class="snapchat-lead-copy">
+              <p class="eyebrow">Snapchat Lead Generation</p>
+              <h3 id="snapchat-lead-capture-title">Turn new Snap form submissions into real FanMesh leads</h3>
+              <p>FanMesh discovers forms from your authorized Snap ad accounts and creates a signed live webhook for the forms you select. Only new submissions arrive through the webhook; use an official export below for historical leads.</p>
+              <div class="snapchat-lead-stats" id="snapchat-lead-stats"></div>
+            </div>
+            <form id="snapchat-lead-form">
+              <fieldset id="snapchat-lead-form-list"><legend>Authorized Snap forms</legend></fieldset>
+              <fieldset class="meta-lead-channels"><legend>Permitted channels</legend>
+                <label class="check"><input type="checkbox" name="consentChannels" value="email" checked> Email</label>
+                <label class="check"><input type="checkbox" name="consentChannels" value="sms"> SMS</label>
+              </fieldset>
+              <label class="authorization-check"><input id="snapchat-lead-authorized" type="checkbox"> I confirm I own these forms and their disclosure permits creator updates through the channels selected above.</label>
+              <button class="button primary" type="submit">Enable live Snap leads ↗</button>
+              <article class="import-preview" id="snapchat-lead-status" aria-live="polite"><strong>No live forms enabled</strong><span>Sync Snapchat, select a Lead Generation Form, and confirm its disclosure.</span></article>
             </form>
           </section>
           <section class="tiktok-performance" id="tiktok-performance" aria-live="polite" hidden></section>
@@ -200,6 +218,7 @@
               <div class="import-fields">
                 <label>Data source<select name="source" required>
                   <option value="meta_ads">Meta Ads leads</option>
+                  <option value="snapchat_ads">Snapchat Ads leads</option>
                   <option value="tiktok_ads">TikTok Ads leads</option>
                   <option value="google_ads">Google Ads leads</option>
                   <option value="csv">First-party consent CSV</option>
@@ -412,6 +431,6 @@
       </main>
     </div>
     <div class="toast" role="status" aria-live="polite"></div>
-    <script src="/app.js?v=0.12.0" type="module"></script>
+    <script src="/app.js?v=0.13.0" type="module"></script>
   </body>
 </html>

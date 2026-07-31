@@ -19,6 +19,7 @@ This repository contains a deployable proof of concept. Without Supabase configu
 - Authorized creator/business account discovery, aggregate metrics, manual sync, and disconnect
 - Meta Page and Instagram professional discovery, per-post views/reach/interaction health, 30-day ad-account results, lead-form inventory, and actionable permission gaps
 - Server-side Meta Instant Form lead preview and consent-confirmed import with no contact fields returned in the preview response
+- Snapchat organization/ad-account discovery, Lead Generation Form inventory, and HMAC-verified live lead capture with replay protection and deterministic deduplication
 - TikTok latest-public-post sync with explainable average views, median views, and engagement-per-view metrics
 - Consent-checked CSV import with preview, deterministic identity keys, deduplication, provenance, and private-workspace persistence
 - Official Facebook, Instagram, TikTok, and YouTube follower-download ingestion from JSON/CSV, with large-file batching and a strict platform-only activation boundary
@@ -46,13 +47,13 @@ Open [http://localhost:3000](http://localhost:3000).
 ## Activate accounts and real workspace data
 
 1. Create a Supabase project.
-2. Run [`supabase/migrations/202607290001_initial.sql`](supabase/migrations/202607290001_initial.sql), then [`supabase/migrations/202607310001_lead_outreach.sql`](supabase/migrations/202607310001_lead_outreach.sql) in its SQL Editor.
-3. Set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` from the project's API settings.
+2. Run [`supabase/migrations/202607290001_initial.sql`](supabase/migrations/202607290001_initial.sql), [`supabase/migrations/202607310001_lead_outreach.sql`](supabase/migrations/202607310001_lead_outreach.sql), then [`supabase/migrations/202607310002_snapchat_lead_webhooks.sql`](supabase/migrations/202607310002_snapchat_lead_webhooks.sql) in its SQL Editor.
+3. Set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` from the project's API settings. Set `SUPABASE_SERVICE_ROLE_KEY` only in the trusted Render service when enabling provider webhooks.
 4. Restart FanMesh and create the first account from the sign-up screen.
 
 To activate platform buttons, configure `APP_BASE_URL`, a stable 32-byte `OAUTH_TOKEN_ENCRYPTION_KEY`, and the selected provider's developer app ID/secret in Render. See [docs/OAUTH-CONNECTIONS.md](docs/OAUTH-CONNECTIONS.md).
 
-Never add a Supabase dashboard password or `service_role` key. See [docs/AUTH-AND-SUPABASE.md](docs/AUTH-AND-SUPABASE.md).
+Never add a Supabase dashboard password or `service_role` key to GitHub, browser code, screenshots, or chat. The service-role key is used only by the trusted server to persist HMAC-verified provider webhooks. See [docs/AUTH-AND-SUPABASE.md](docs/AUTH-AND-SUPABASE.md).
 
 ## API preview
 
@@ -91,7 +92,7 @@ Every score includes its component points and strongest signals. Sensitive trait
 
 ## The production direction
 
-Accounts, private workspaces, consented lead imports, official platform-download ingestion, Organic Pulse, source-filtered lead outreach, routed workspace views, and the multi-provider OAuth foundation are implemented. Meta is the first end-to-end provider lane; Snapchat Business follows after the shared connection, sync, consent, health, and attribution contract is proven. Meta measures authorized Instagram post health; automatic Instant Form retrieval remains available only when Meta grants the required app and Page permissions. Creators without Meta business verification can import authorized consent exports. Email and SMS launch when Resend and Twilio credentials are configured. See [docs/LEAD-OUTREACH.md](docs/LEAD-OUTREACH.md), [docs/ORGANIC-PULSE.md](docs/ORGANIC-PULSE.md), [docs/ACTIVATION.md](docs/ACTIVATION.md), [docs/OAUTH-CONNECTIONS.md](docs/OAUTH-CONNECTIONS.md), [docs/SOCIAL-PHASE-1.md](docs/SOCIAL-PHASE-1.md), [docs/AUDIENCE-IMPORT.md](docs/AUDIENCE-IMPORT.md), [docs/AUTH-AND-SUPABASE.md](docs/AUTH-AND-SUPABASE.md), [docs/PRODUCT.md](docs/PRODUCT.md), [docs/API.md](docs/API.md), and [docs/SECURITY.md](docs/SECURITY.md).
+Accounts, private workspaces, consented lead imports, official platform-download ingestion, Organic Pulse, source-filtered lead outreach, routed workspace views, and the multi-provider OAuth foundation are implemented. Meta established the first end-to-end provider lane; Snapchat Business is now the active adapter with corrected organization/ad-account discovery, Lead Generation Form inventory, and verified live lead webhooks. Meta measures authorized Instagram post health; automatic Instant Form retrieval remains available only when Meta grants the required app and Page permissions. Historical Snapchat submissions still require an official export because Snap's documented live delivery path begins when a form webhook is enabled. Email and SMS launch when Resend and Twilio credentials are configured. See [docs/LEAD-OUTREACH.md](docs/LEAD-OUTREACH.md), [docs/ORGANIC-PULSE.md](docs/ORGANIC-PULSE.md), [docs/ACTIVATION.md](docs/ACTIVATION.md), [docs/OAUTH-CONNECTIONS.md](docs/OAUTH-CONNECTIONS.md), [docs/SOCIAL-PHASE-1.md](docs/SOCIAL-PHASE-1.md), [docs/AUDIENCE-IMPORT.md](docs/AUDIENCE-IMPORT.md), [docs/AUTH-AND-SUPABASE.md](docs/AUTH-AND-SUPABASE.md), [docs/PRODUCT.md](docs/PRODUCT.md), [docs/API.md](docs/API.md), and [docs/SECURITY.md](docs/SECURITY.md).
 
 ## Non-goals
 
@@ -112,7 +113,7 @@ Its advantage is ownership, timing, segmentation, attribution, and genuine early
 3. Select the repository and apply `render.yaml`.
 4. Confirm `/api/health` returns `{"status":"ok", ...}` after deployment.
 
-Demo mode needs no secrets. Account mode requires `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` in Render's secret manager. OAuth additionally requires `APP_BASE_URL`, `OAUTH_TOKEN_ENCRYPTION_KEY`, and each enabled provider's developer app credentials. Lead Outreach uses `RESEND_API_KEY` plus `OUTREACH_EMAIL_FROM` for email, and `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, plus `TWILIO_FROM_NUMBER` for SMS.
+Demo mode needs no secrets. Account mode requires `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` in Render's secret manager. Verified provider-webhook ingestion additionally requires `SUPABASE_SERVICE_ROLE_KEY` as a server-only Render secret. OAuth requires `APP_BASE_URL`, `OAUTH_TOKEN_ENCRYPTION_KEY`, and each enabled provider's developer app credentials. Lead Outreach uses `RESEND_API_KEY` plus `OUTREACH_EMAIL_FROM` for email, and `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, plus `TWILIO_FROM_NUMBER` for SMS.
 
 ## License
 

@@ -1,12 +1,13 @@
+import { createHmac } from "node:crypto";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequestHandler, handleRequest } from "../src/server.js";
 
-async function dispatch({ method = "GET", url = "/", body = "", handler = handleRequest } = {}) {
+async function dispatch({ method = "GET", url = "/", body = "", headers = {}, handler = handleRequest } = {}) {
   const request = {
     method,
     url,
-    headers: { host: "localhost" },
+    headers: { host: "localhost", ...headers },
     async *[Symbol.asyncIterator]() {
       if (body) yield Buffer.from(body);
     },
@@ -33,7 +34,7 @@ async function dispatch({ method = "GET", url = "/", body = "", handler = handle
 test("health endpoint reports an operational service", async () => {
   const response = await dispatch({ url: "/api/health" });
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.12.0", database: "demo" });
+  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.13.0", database: "demo" });
 });
 
 test("public legal pages explain FanMesh data and platform rules", async () => {
@@ -53,8 +54,62 @@ test("workspace navigation separates each product area into a routed view", asyn
     assert.match(html, new RegExp(`href="#/${route}"`));
     assert.match(html, new RegExp(`data-page="${route}"`));
   }
-  assert.match(html, /Meta first/i);
   assert.match(html, /Snapchat Business/i);
+  assert.match(html, /Current focus/i);
+});
+
+test("verified Snapchat lead webhooks persist a consented lead without returning contact fields", async () => {
+  const secret = "snap-hmac-secret";
+  let committed;
+  const handler = createRequestHandler({
+    workspaceStore: {
+      async getProviderWebhook(pathKey) {
+        assert.equal(pathKey, "abcdefghijklmnopqrstuvwx");
+        return {
+          id: "webhook-1",
+          workspace_id: "workspace-1",
+          external_form_id: "form-1",
+          external_account_id: "ad-account-1",
+          encrypted_secret: "encrypted-secret",
+          consented_channels: ["email"],
+        };
+      },
+      async commitProviderLead(webhook, preview, options) {
+        committed = { webhook, preview, options };
+        return { accepted: 1, created: 1, updated: 0, duplicate: false };
+      },
+    },
+    oauthService: {
+      vault: { open(value) { assert.equal(value, "encrypted-secret"); return { hmacSecret: secret }; } },
+    },
+  });
+  const payload = {
+    form_id: "form-1",
+    form_name: "Release list",
+    ad_account_id: "ad-account-1",
+    campaign_id: "campaign-1",
+    campaign_name: "New single",
+    lead_id: "lead-1",
+    create_time: new Date().toISOString(),
+    first_name: "Ari",
+    email: "ari@example.com",
+  };
+  const body = JSON.stringify(payload);
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const signature = createHmac("sha256", secret).update(`${timestamp}.${body}`).digest("hex");
+  const response = await dispatch({
+    method: "POST",
+    url: "/api/v1/webhooks/snapchat/leads/abcdefghijklmnopqrstuvwx",
+    body,
+    headers: { signature, t: timestamp },
+    handler,
+  });
+  assert.equal(response.statusCode, 202);
+  assert.equal(response.json().data.accepted, 1);
+  assert.equal(response.json().meta.contactFieldsReturned, false);
+  assert.equal(committed.preview.valid[0].email, "ari@example.com");
+  assert.equal(committed.options.externalLeadId, "lead-1");
+  assert.equal(JSON.stringify(response.json()).includes("ari@example.com"), false);
 });
 
 test("auth session clearly reports unconfigured demo mode", async () => {

@@ -540,6 +540,45 @@ function renderMetaLeadImport(catalog) {
   `).join("")}`;
 }
 
+function renderSnapchatLeadCapture(catalog) {
+  const target = document.querySelector("#snapchat-lead-capture");
+  const form = document.querySelector("#snapchat-lead-form");
+  const list = document.querySelector("#snapchat-lead-form-list");
+  const stats = document.querySelector("#snapchat-lead-stats");
+  const status = document.querySelector("#snapchat-lead-status");
+  const source = catalog.social.find((item) => item.platform === "snapchat");
+  if (source?.status !== "connected" || !source.account) {
+    target.hidden = true;
+    return;
+  }
+  const forms = Array.isArray(source.account.leadForms) ? source.account.leadForms : [];
+  const active = forms.filter((item) => item.webhookStatus === "active");
+  const captured = forms.reduce((sum, item) => sum + (Number(item.capturedLeads) || 0), 0);
+  target.hidden = false;
+  stats.innerHTML = `
+    <span><small>Ad accounts</small><strong>${numberFormatter.format(source.account.adAccounts || 0)}</strong></span>
+    <span><small>Lead forms</small><strong>${numberFormatter.format(forms.length)}</strong></span>
+    <span><small>Live forms</small><strong>${numberFormatter.format(active.length)}</strong></span>
+    <span><small>Captured leads</small><strong>${numberFormatter.format(captured)}</strong></span>`;
+  const available = forms.filter((item) => item.webhookStatus !== "active");
+  if (!forms.length) {
+    list.innerHTML = "<legend>Authorized Snap forms</legend><p class=\"platform-empty\">Snapchat returned no Lead Generation Forms. Create a lead form in Ads Manager or confirm this login has access to the correct ad account, then sync again.</p>";
+  } else {
+    list.innerHTML = `<legend>Authorized Snap forms</legend>${forms.map((leadForm) => {
+      const isActive = leadForm.webhookStatus === "active";
+      const channels = (leadForm.contactFields || []).map((field) => field === "EMAIL" ? "email" : field === "PHONE_NUMBER" ? "SMS" : field).join(" + ") || "no email/phone field";
+      const disclosure = leadForm.hasLegalDisclosure ? `${numberFormatter.format(leadForm.requiredConsentCount || 0)} required consent item${leadForm.requiredConsentCount === 1 ? "" : "s"}` : "review disclosure before enabling";
+      return `<label class="meta-form-option ${isActive ? "is-live" : ""}"><input type="checkbox" name="formIds" value="${escapeHtml(leadForm.id)}" ${isActive ? "checked disabled" : ""}><span><strong>${escapeHtml(leadForm.name)}</strong><small>${escapeHtml(channels)} · ${escapeHtml(disclosure)} · ${isActive ? `${numberFormatter.format(leadForm.capturedLeads || 0)} captured` : "not live"}</small></span></label>`;
+    }).join("")}`;
+  }
+  form.querySelector("button[type=submit]").disabled = available.length === 0;
+  document.querySelector("#snapchat-lead-authorized").disabled = available.length === 0;
+  status.className = `import-preview ${active.length ? "success" : ""}`;
+  status.innerHTML = active.length
+    ? `<strong>${numberFormatter.format(active.length)} live Snap form${active.length === 1 ? "" : "s"}</strong><span>${numberFormatter.format(captured)} verified lead${captured === 1 ? "" : "s"} captured since FanMesh webhooks were enabled.</span>`
+    : "<strong>No live forms enabled</strong><span>Select a form and confirm its disclosure. Existing historical leads must be imported from an official export.</span>";
+}
+
 function renderOrganicPulse(organic = {}) {
   const list = document.querySelector("#organic-post-list");
   const summary = document.querySelector("#organic-summary");
@@ -588,7 +627,7 @@ function renderConnections(catalog) {
       <p>${escapeHtml(source.caveat || "Import only records you are authorized to use.")}</p>
       <div class="source-tags">${source.capabilities.slice(0, 2).map((capability) => `<span>${escapeHtml(capabilityLabel(capability))}</span>`).join("")}</div>
       ${source.status === "connected" ? `
-        <div class="connection-summary"><strong>${numberFormatter.format(source.account?.followers || 0)} followers</strong><span>${source.platform === "tiktok" ? `${numberFormatter.format(source.account?.recentVideoCount || 0)} posts · ${numberFormatter.format(source.account?.averageViews || 0)} avg views` : source.platform === "meta" ? `${numberFormatter.format(source.account?.pageCount || 0)} Pages · ${numberFormatter.format(source.account?.instagramAccountCount || 0)} Instagram` : `${numberFormatter.format(source.account?.adAccounts || 0)} ad accounts`}</span></div>
+        <div class="connection-summary"><strong>${source.platform === "snapchat" ? `${numberFormatter.format(source.account?.capturedLeads || 0)} captured leads` : `${numberFormatter.format(source.account?.followers || 0)} followers`}</strong><span>${source.platform === "tiktok" ? `${numberFormatter.format(source.account?.recentVideoCount || 0)} posts · ${numberFormatter.format(source.account?.averageViews || 0)} avg views` : source.platform === "meta" ? `${numberFormatter.format(source.account?.pageCount || 0)} Pages · ${numberFormatter.format(source.account?.instagramAccountCount || 0)} Instagram` : source.platform === "snapchat" ? `${numberFormatter.format(source.account?.adAccounts || 0)} ad accounts · ${numberFormatter.format(source.account?.leadFormCount || 0)} lead forms` : `${numberFormatter.format(source.account?.adAccounts || 0)} ad accounts`}</span></div>
         <div class="connection-actions"><button class="connection-button" type="button" data-connection-sync="${escapeHtml(source.platform)}">Sync now</button><button class="connection-link" type="button" data-connection-disconnect="${escapeHtml(source.platform)}">Disconnect</button></div>
       ` : source.configured && source.connectUrl ? `
         <a class="connection-button" href="${escapeHtml(source.connectUrl)}">Connect ${escapeHtml(source.label)} ↗</a>
@@ -599,6 +638,7 @@ function renderConnections(catalog) {
   `).join("");
   renderMetaPerformance(catalog);
   renderMetaLeadImport(catalog);
+  renderSnapchatLeadCapture(catalog);
   renderTikTokPerformance(catalog);
 }
 
@@ -1145,6 +1185,46 @@ document.querySelector("#commit-meta-leads").addEventListener("click", async (ev
     button.disabled = false;
   } finally {
     button.textContent = "Commit accepted leads ↗";
+  }
+});
+
+document.querySelector("#snapchat-lead-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector("button[type=submit]");
+  const data = new FormData(form);
+  const authorized = document.querySelector("#snapchat-lead-authorized").checked;
+  const input = {
+    formIds: data.getAll("formIds"),
+    consentChannels: data.getAll("consentChannels"),
+    confirmedAuthorized: authorized,
+    confirmedConsent: authorized,
+  };
+  const target = document.querySelector("#snapchat-lead-status");
+  button.disabled = true;
+  button.textContent = "Creating verified webhooks…";
+  try {
+    if (!input.formIds.length) throw new Error("Select at least one Snap Lead Generation Form");
+    if (!input.consentChannels.length) throw new Error("Choose at least one permitted contact channel");
+    if (!authorized) throw new Error("Confirm the selected forms' contact disclosure");
+    const response = await fetch("/api/v1/oauth/snapchat/leads/webhooks", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error?.message || "Could not enable live Snapchat leads");
+    target.className = "import-preview success";
+    target.innerHTML = `<strong>${numberFormatter.format(body.data.webhookCount || 0)} Snap form${body.data.webhookCount === 1 ? "" : "s"} enabled</strong><span>New verified submissions will enter Audience automatically. Historical submissions still require an official Snap export.</span>`;
+    document.querySelector("#snapchat-lead-authorized").checked = false;
+    await loadDashboard();
+    showToast("Live Snapchat lead capture is enabled.");
+  } catch (error) {
+    target.className = "import-preview error";
+    target.innerHTML = `<strong>Snap lead setup failed</strong><span>${escapeHtml(error.message)}</span>`;
+  } finally {
+    button.disabled = form.querySelectorAll('input[name="formIds"]:not(:disabled)').length === 0;
+    button.textContent = "Enable live Snap leads ↗";
   }
 });
 

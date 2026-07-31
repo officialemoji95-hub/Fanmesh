@@ -1,6 +1,6 @@
 {
   "name": "fanmesh",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "private": true,
   "description": "Creator-owned audience intelligence and direct fan activation.",
   "type": "module",
@@ -11,6 +11,6 @@
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
     "test": "node --test",
-    "check": "node --check src/server.js && node --check src/activation.js && node --check src/auth.js && node --check src/database.js && node --check src/oauth.js && node --check src/organic.js && node --check src/outreach.js && node --check src/social.js && node --check public/app.js"
+    "check": "node --check src/server.js && node --check src/activation.js && node --check src/auth.js && node --check src/database.js && node --check src/oauth.js && node --check src/organic.js && node --check src/outreach.js && node --check src/scoring.js && node --check src/snapchat.js && node --check src/social.js && node --check public/app.js"
   }
 }

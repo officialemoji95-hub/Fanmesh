@@ -52,7 +52,7 @@ function safePublicUrl(value, allowedHost) {
   }
 }
 
-export function publicConnectionState(row = {}) {
+export function publicConnectionState(row = {}, providerWebhooks = []) {
   const publicData = row.metadata?.public || {};
   const profile = publicData.profile || {};
   const organizations = Array.isArray(publicData.organizations) ? publicData.organizations : [];
@@ -122,14 +122,30 @@ export function publicConnectionState(row = {}) {
   const leadForms = (Array.isArray(publicData.leadForms) ? publicData.leadForms : []).slice(0, 250).map((form) => ({
     id: shortText(form?.id, 80),
     pageId: shortText(form?.pageId, 80),
+    adAccountId: shortText(form?.adAccountId, 160),
     name: shortText(form?.name, 120) || "Untitled Instant Form",
+    title: shortText(form?.title, 160),
     status: shortText(form?.status, 40),
     createdAt: form?.createdAt || null,
+    updatedAt: form?.updatedAt || null,
+    contactFields: (Array.isArray(form?.contactFields) ? form.contactFields : []).map((field) => shortText(field, 60)).filter(Boolean),
+    requiredConsentCount: Math.max(0, Number(form?.requiredConsentCount) || 0),
+    hasLegalDisclosure: Boolean(form?.hasLegalDisclosure),
+    webhookStatus: shortText(form?.webhookStatus, 40) || "not_configured",
+    capturedLeads: Math.max(0, Number(form?.capturedLeads) || 0),
+    lastLeadAt: form?.lastLeadAt || null,
     leadCount: form?.leadCount !== null && form?.leadCount !== undefined && Number.isFinite(Number(form.leadCount))
       ? Math.max(0, Number(form.leadCount))
       : null,
     latestLeadAt: form?.latestLeadAt || null,
   })).filter((form) => form.id);
+  for (const form of leadForms) {
+    const webhook = providerWebhooks.find((item) => item.external_form_id === form.id);
+    if (!webhook) continue;
+    form.webhookStatus = shortText(webhook.status, 40) || form.webhookStatus;
+    form.capturedLeads = Math.max(0, Number(webhook.received_count) || 0);
+    form.lastLeadAt = webhook.last_received_at || form.lastLeadAt;
+  }
   const syncIssues = (Array.isArray(publicData.syncIssues) ? publicData.syncIssues : []).slice(0, 10).map((issue) => ({
     area: shortText(issue?.area, 40),
     message: shortText(issue?.message, 240),
@@ -157,6 +173,8 @@ export function publicConnectionState(row = {}) {
       instagramAccountCount: Number(metrics.instagramAccounts) || instagramAccounts.length,
       leadFormCount: Number(metrics.leadForms) || leadForms.length,
       knownLeads: Number(metrics.knownLeads) || 0,
+      liveLeadForms: providerWebhooks.filter((item) => item.status === "active").length || Number(metrics.liveLeadForms) || 0,
+      capturedLeads: providerWebhooks.reduce((sum, item) => sum + (Number(item.received_count) || 0), 0) || Number(metrics.capturedLeads) || 0,
       recentMediaCount: Number(metrics.recentMediaCount) || instagramAccounts.reduce((sum, account) => sum + account.recentMedia.length, 0),
       recentMediaInteractions: Number(metrics.recentMediaInteractions) || 0,
       recentMediaReach: Number(metrics.recentMediaReach) || 0,
@@ -196,6 +214,7 @@ function queryValue(value) {
 
 export function createWorkspaceStore({ environment = process.env, fetchImpl = globalThis.fetch } = {}) {
   const config = getSupabaseConfig(environment);
+  const adminKey = shortText(environment.SUPABASE_SERVICE_ROLE_KEY, 3000);
 
   async function request(path, token, { method = "GET", body, prefer } = {}) {
     if (!config.configured) throw new DatabaseError("Supabase is not configured", 503);
@@ -205,7 +224,7 @@ export function createWorkspaceStore({ environment = process.env, fetchImpl = gl
         method,
         signal: AbortSignal.timeout(12000),
         headers: {
-          apikey: config.key,
+          apikey: token === adminKey && adminKey ? adminKey : config.key,
           authorization: `Bearer ${token}`,
           ...(body ? { "content-type": "application/json" } : {}),
           ...(prefer ? { prefer } : {}),
@@ -239,7 +258,7 @@ export function createWorkspaceStore({ environment = process.env, fetchImpl = gl
         method: "HEAD",
         signal: AbortSignal.timeout(12000),
         headers: {
-          apikey: config.key,
+          apikey: token === adminKey && adminKey ? adminKey : config.key,
           authorization: `Bearer ${token}`,
           prefer: "count=exact",
           range: "0-0",
@@ -298,11 +317,23 @@ export function createWorkspaceStore({ environment = process.env, fetchImpl = gl
       directConnections: fans.filter((fan) => fan.consentedChannels.length).length,
       connectedPlatforms: new Set((connectionRows || []).filter((row) => row.status === "connected").map((row) => row.platform)).size,
     };
+    let webhookRows = [];
+    try {
+      webhookRows = await request(
+        `/rest/v1/provider_webhooks?select=platform,external_form_id,status,received_count,last_received_at&workspace_id=eq.${workspaceId}`,
+        token,
+      ) || [];
+    } catch {
+      // The dashboard remains usable until the optional provider-webhook migration is installed.
+    }
     return {
       workspace,
       fans,
       snapshot,
-      connectionStatuses: Object.fromEntries((connectionRows || []).map((row) => [row.platform, publicConnectionState(row)])),
+      connectionStatuses: Object.fromEntries((connectionRows || []).map((row) => [
+        row.platform,
+        publicConnectionState(row, webhookRows.filter((item) => item.platform === row.platform)),
+      ])),
     };
   }
 
@@ -826,19 +857,145 @@ export function createWorkspaceStore({ environment = process.env, fetchImpl = gl
     });
   }
 
+  async function saveProviderWebhook(user, token, webhook) {
+    if (!adminKey) throw new DatabaseError("Set SUPABASE_SERVICE_ROLE_KEY before enabling live platform leads", 503);
+    const workspace = await workspaceFor(user, token);
+    const updatedAt = new Date().toISOString();
+    const rows = await request(
+      "/rest/v1/provider_webhooks?on_conflict=workspace_id,platform,external_form_id&select=id,workspace_id,platform,external_form_id,external_account_id,integration_id,path_key,status,consented_channels,received_count,last_received_at",
+      token,
+      {
+        method: "POST",
+        prefer: "resolution=merge-duplicates,return=representation",
+        body: [{
+          workspace_id: workspace.id,
+          platform: webhook.platform,
+          external_form_id: webhook.externalFormId,
+          external_account_id: webhook.externalAccountId || null,
+          integration_id: webhook.integrationId,
+          path_key: webhook.pathKey,
+          encrypted_secret: webhook.encryptedSecret,
+          consented_channels: webhook.consentedChannels,
+          status: webhook.status || "active",
+          updated_at: updatedAt,
+        }],
+      },
+    );
+    if (!rows?.[0]?.id) throw new DatabaseError("Provider webhook could not be saved", 502);
+    return rows[0];
+  }
+
+  async function getProviderWebhook(pathKey) {
+    if (!adminKey) throw new DatabaseError("Live platform lead ingestion is not configured", 503);
+    const rows = await request(
+      `/rest/v1/provider_webhooks?select=id,workspace_id,platform,external_form_id,external_account_id,integration_id,encrypted_secret,consented_channels,status,received_count,last_received_at&path_key=eq.${queryValue(pathKey)}&status=eq.active&limit=1`,
+      adminKey,
+    );
+    return rows?.[0] || null;
+  }
+
+  async function commitProviderLead(webhook, preview, { externalLeadId, metadata } = {}) {
+    if (!adminKey) throw new DatabaseError("Live platform lead ingestion is not configured", 503);
+    const leadId = shortText(externalLeadId, 160);
+    if (!leadId) throw new DatabaseError("Provider lead identifier is missing", 400);
+    const created = await request(
+      "/rest/v1/provider_lead_events?on_conflict=webhook_id,external_lead_id&select=id",
+      adminKey,
+      {
+        method: "POST",
+        prefer: "resolution=ignore-duplicates,return=representation",
+        body: [{
+          webhook_id: webhook.id,
+          workspace_id: webhook.workspace_id,
+          external_lead_id: leadId,
+          status: preview.summary.valid ? "processing" : "invalid",
+          metadata: metadata || {},
+          error: preview.summary.valid ? null : shortText(preview.invalid?.[0]?.reason, 240) || "Lead did not contain a permitted contact channel",
+          processed_at: preview.summary.valid ? null : new Date().toISOString(),
+        }],
+      },
+    );
+    if (!created?.[0]?.id) return { duplicate: true, accepted: 0, created: 0, updated: 0 };
+    const eventId = created[0].id;
+    if (!preview.summary.valid) return { duplicate: false, accepted: 0, created: 0, updated: 0, invalid: 1 };
+
+    try {
+      const importedAt = new Date().toISOString();
+      const previous = await existingFans(webhook.workspace_id, adminKey, preview.valid.map((lead) => lead.contactKey));
+      const rows = preview.valid.map((lead) => fanRow(webhook.workspace_id, lead, previous.get(lead.contactKey), importedAt));
+      const savedFans = await request(
+        "/rest/v1/fans?on_conflict=workspace_id,contact_key&select=id,contact_key",
+        adminKey,
+        { method: "POST", prefer: "resolution=merge-duplicates,return=representation", body: rows },
+      );
+      const fanIds = new Map((savedFans || []).map((row) => [row.contact_key, row.id]));
+      if (fanIds.size !== rows.length) throw new DatabaseError("Provider lead could not be confirmed", 502);
+      const existingKeys = await existingConsentKeys(webhook.workspace_id, adminKey, [...fanIds.values()]);
+      const consentRows = preview.valid.flatMap((lead) => lead.consent.channels.map((channel) => ({
+        workspace_id: webhook.workspace_id,
+        fan_id: fanIds.get(lead.contactKey),
+        channel,
+        purpose: "creator_updates",
+        status: "granted",
+        source: lead.consent.source,
+        occurred_at: lead.consent.at,
+      }))).filter((row) => !existingKeys.has(consentKey(row)));
+      if (consentRows.length) {
+        await request("/rest/v1/consents", adminKey, { method: "POST", prefer: "return=minimal", body: consentRows });
+      }
+      const fanId = fanIds.get(preview.valid[0].contactKey);
+      await request(`/rest/v1/provider_lead_events?id=eq.${queryValue(eventId)}`, adminKey, {
+        method: "PATCH",
+        prefer: "return=minimal",
+        body: { status: "completed", fan_id: fanId, processed_at: importedAt },
+      });
+      await request(`/rest/v1/provider_webhooks?id=eq.${queryValue(webhook.id)}`, adminKey, {
+        method: "PATCH",
+        prefer: "return=minimal",
+        body: {
+          received_count: Math.max(0, Number(webhook.received_count) || 0) + 1,
+          last_received_at: importedAt,
+          updated_at: importedAt,
+        },
+      });
+      await refreshAudienceSnapshot({ id: webhook.workspace_id }, adminKey);
+      return {
+        duplicate: false,
+        accepted: rows.length,
+        created: rows.filter((row) => !previous.has(row.contact_key)).length,
+        updated: rows.filter((row) => previous.has(row.contact_key)).length,
+        consentEventsAdded: consentRows.length,
+      };
+    } catch (error) {
+      try {
+        await request(`/rest/v1/provider_lead_events?id=eq.${queryValue(eventId)}`, adminKey, {
+          method: "PATCH",
+          prefer: "return=minimal",
+          body: { status: "failed", error: shortText(error.message, 240), processed_at: new Date().toISOString() },
+        });
+      } catch {
+        // Preserve the original processing failure.
+      }
+      throw error;
+    }
+  }
+
   return Object.freeze({
     commitLeadImport,
+    commitProviderLead,
     commitPlatformIdentityImport,
     config,
     getActivationEligibility,
     getDashboard,
     getOutreachCandidates,
+    getProviderWebhook,
     getSourceConnection,
     listActivations,
     listOutreachCampaigns,
     createOutreachCampaign,
     finishOutreachCampaign,
     saveExperiment,
+    saveProviderWebhook,
     saveSourceConnection,
     workspaceFor,
   });

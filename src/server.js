@@ -13,8 +13,14 @@ import { openApiDocument } from "./openapi.js";
 import { createOutreachService, normalizeOutreachInput, publicOutreachPlan, selectOutreachCohort } from "./outreach.js";
 import { getConnectionCatalog, planSocialExperiment, previewLeadImport, previewPlatformIdentityImport } from "./social.js";
 import { scoreAudience, scoreFan } from "./scoring.js";
+import {
+  normalizeSnapchatWebhookLead,
+  publicSnapchatLeadMetadata,
+  SnapchatWebhookError,
+  verifySnapchatWebhookSignature,
+} from "./snapchat.js";
 
-const APP_VERSION = "0.12.0";
+const APP_VERSION = "0.13.0";
 const port = Number(process.env.PORT || 3000);
 const publicDirectory = fileURLToPath(new URL("../public", import.meta.url));
 const maxBodyBytes = 2 * 1024 * 1024;
@@ -60,7 +66,7 @@ function sendRedirect(response, location, cookies = []) {
   response.end();
 }
 
-async function readJson(request) {
+async function readRawBody(request) {
   let body = "";
   for await (const chunk of request) {
     body += chunk;
@@ -70,6 +76,11 @@ async function readJson(request) {
       throw error;
     }
   }
+  return body;
+}
+
+async function readJson(request) {
+  const body = await readRawBody(request);
   if (!body) return {};
   try {
     return JSON.parse(body);
@@ -277,6 +288,49 @@ export function createRequestHandler({
       }
     }
 
+    const snapchatWebhookRoute = pathname.match(/^\/api\/v1\/webhooks\/snapchat\/leads\/([A-Za-z0-9_-]{20,80})$/);
+    if (request.method === "POST" && snapchatWebhookRoute) {
+      try {
+        const rawBody = await readRawBody(request);
+        const webhook = await workspaceStore.getProviderWebhook(snapchatWebhookRoute[1]);
+        if (!webhook) throw new SnapchatWebhookError("Snapchat webhook is not active", 404);
+        const secret = oauthService.vault.open(webhook.encrypted_secret)?.hmacSecret;
+        const verified = verifySnapchatWebhookSignature({
+          secret,
+          signature: request.headers?.signature,
+          timestampHeader: request.headers?.t,
+          rawBody,
+        });
+        if (!verified) throw new SnapchatWebhookError("Snapchat webhook signature is invalid or expired", 401);
+        let payload;
+        try {
+          payload = JSON.parse(rawBody);
+        } catch {
+          throw new SnapchatWebhookError("Snapchat webhook body must contain valid JSON", 400);
+        }
+        if (String(payload.form_id || "") !== webhook.external_form_id) {
+          throw new SnapchatWebhookError("Snapchat lead form does not match this webhook", 403);
+        }
+        if (webhook.external_account_id && String(payload.ad_account_id || "") !== webhook.external_account_id) {
+          throw new SnapchatWebhookError("Snapchat ad account does not match this webhook", 403);
+        }
+        const preview = previewLeadImport({
+          source: "snapchat_ads",
+          rows: [normalizeSnapchatWebhookLead(payload, webhook.consented_channels)],
+        });
+        const saved = await workspaceStore.commitProviderLead(webhook, preview, {
+          externalLeadId: payload.lead_id,
+          metadata: publicSnapchatLeadMetadata(payload),
+        });
+        return sendJson(response, 202, {
+          data: { received: true, accepted: saved.accepted || 0, duplicate: Boolean(saved.duplicate) },
+          meta: { persisted: Boolean(saved.accepted), contactFieldsReturned: false, source: "snapchat_ads" },
+        });
+      } catch (error) {
+        return sendError(response, error);
+      }
+    }
+
     const oauthRoute = pathname.match(/^\/api\/v1\/oauth\/([a-z_]+)\/(start|callback|sync|disconnect)$/);
     if (oauthRoute) {
       const [, provider, action] = oauthRoute;
@@ -356,6 +410,19 @@ export function createRequestHandler({
         return sendJson(response, 201, {
           data: { ...saved, forms: batch.forms, fetchedAt: batch.fetchedAt },
           meta: { persisted: true },
+        }, cookieHeaders(session.cookies));
+      } catch (error) {
+        return sendError(response, error);
+      }
+    }
+
+    if (request.method === "POST" && pathname === "/api/v1/oauth/snapchat/leads/webhooks") {
+      try {
+        const session = await authenticatedSession(request);
+        const configured = await oauthService.configureSnapchatLeadWebhooks(session.data, await readJson(request));
+        return sendJson(response, 201, {
+          data: configured,
+          meta: { persisted: true, liveCapture: true, historicalLeadsImported: false },
         }, cookieHeaders(session.cookies));
       } catch (error) {
         return sendError(response, error);

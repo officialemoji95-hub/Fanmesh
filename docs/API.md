@@ -1,4 +1,4 @@
-# FanMesh API v0.12
+# FanMesh API v0.13
 
 The prototype serves JSON under `/api`. Responses use `{ "data": ... }` for successful resources and `{ "error": { "message": ... } }` for errors. When Supabase is configured, workspace endpoints require the secure creator session cookie and PostgreSQL row-level security isolates every workspace. When Supabase is unconfigured, dashboard reads use clearly labeled demo data.
 
@@ -105,6 +105,14 @@ Requires a creator session and a connected Meta account with `leads_retrieval`. 
 ### `POST /api/v1/oauth/meta/leads/commit`
 
 Accepts the same confirmation payload, re-fetches the selected forms, revalidates every submission, and commits only valid consented contacts. Each record stores deterministic deduplication keys plus `meta_instant_form:<form-id>:creator_attested` provenance. This creator attestation is appropriate only when the selected form disclosure genuinely permits the chosen email or SMS use.
+
+### `POST /api/v1/oauth/snapchat/leads/webhooks`
+
+Requires a creator session, a connected Snapchat Marketing API account, Organization Admin access, the selected authorized `formIds`, permitted `consentChannels`, and both ownership/disclosure confirmations. FanMesh creates one official public-webhook integration per selected Snap Lead Generation Form, encrypts the returned HMAC secret, and stores a unique unguessable callback path. The response contains only form/status summaries.
+
+### `POST /api/v1/webhooks/snapchat/leads/{pathKey}`
+
+Receives new Snapchat Lead Generation Form submissions. The route verifies the `Signature` HMAC against `t + "." + rawBody`, enforces a five-minute replay window, confirms the configured form and ad account, deduplicates Snap's lead ID, validates the selected contact channel, and persists the contact plus `snapchat_lead_form:<form-id>:creator_attested` consent provenance. Responses never return contact fields. Existing submissions from before webhook activation must come through an official Snapchat export and the standard lead importer.
 
 ### `POST /api/v1/experiments/social`
 
