@@ -20,7 +20,7 @@ import {
   verifySnapchatWebhookSignature,
 } from "./snapchat.js";
 
-const APP_VERSION = "0.13.0";
+const APP_VERSION = "0.14.0";
 const port = Number(process.env.PORT || 3000);
 const publicDirectory = fileURLToPath(new URL("../public", import.meta.url));
 const maxBodyBytes = 2 * 1024 * 1024;
@@ -168,7 +168,7 @@ export function createRequestHandler({
           workspace: { name: "Demo workspace", role: "demo" },
           insights: buildInsights(demoFans),
           fans,
-          connections: getConnectionCatalog({}, oauthService.catalog()),
+          connections: getConnectionCatalog({}, oauthService.catalog({}, { providerWebhookSchemaReady: false })),
           organic: buildOrganicQueue({}),
         },
         meta: { demo: true, authenticated: false, count: fans.length },
@@ -188,7 +188,10 @@ export function createRequestHandler({
         workspace: state.workspace,
         insights: buildInsights(state.fans, state.snapshot),
         fans,
-        connections: getConnectionCatalog(state.connectionStatuses, oauthService.catalog(state.connectionStatuses)),
+        connections: getConnectionCatalog(
+          state.connectionStatuses,
+          oauthService.catalog(state.connectionStatuses, state.readiness),
+        ),
         organic,
       },
       meta: { demo: false, authenticated: true, count: fans.length },
