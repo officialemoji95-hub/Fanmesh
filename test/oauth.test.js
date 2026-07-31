@@ -40,8 +40,40 @@ test("provider catalog activates only fully configured OAuth apps", () => {
   const meta = service.catalog().find((provider) => provider.platform === "meta");
   assert.equal(tiktok.configured, true);
   assert.equal(tiktok.callbackUrl, "https://fanmesh.example/api/v1/oauth/tiktok/callback");
+  assert.deepEqual(tiktok.setup, {
+    callbackReady: true,
+    tokenEncryptionReady: true,
+    developerCredentialsReady: true,
+    serviceRoleReady: null,
+    webhookSchemaReady: null,
+  });
   assert.equal(meta.configured, false);
   assert.equal(meta.connectUrl, null);
+});
+
+test("Snapchat catalog exposes safe activation gates without returning secrets", () => {
+  const service = createOAuthService({
+    environment: {
+      NODE_ENV: "production",
+      APP_BASE_URL: "https://fanmesh.example",
+      OAUTH_TOKEN_ENCRYPTION_KEY: encryptionKey,
+      SNAPCHAT_CLIENT_ID: "snap-client",
+      SNAPCHAT_CLIENT_SECRET: "snap-secret",
+      SUPABASE_SERVICE_ROLE_KEY: "server-only-secret",
+    },
+  });
+  const snapchat = service.catalog({}, { providerWebhookSchemaReady: true })
+    .find((provider) => provider.platform === "snapchat");
+  assert.equal(snapchat.configured, true);
+  assert.deepEqual(snapchat.setup, {
+    callbackReady: true,
+    tokenEncryptionReady: true,
+    developerCredentialsReady: true,
+    serviceRoleReady: true,
+    webhookSchemaReady: true,
+  });
+  assert.equal(JSON.stringify(snapchat).includes("server-only-secret"), false);
+  assert.equal(JSON.stringify(snapchat).includes("snap-secret"), false);
 });
 
 test("Snapchat callback unwraps organizations and discovers authorized lead forms", async () => {
