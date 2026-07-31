@@ -187,6 +187,7 @@ function providerConfiguration(provider, environment, vault) {
     graphVersion: provider === "meta" && /^v\d+\.\d+$/.test(text(environment.META_GRAPH_VERSION, 20))
       ? text(environment.META_GRAPH_VERSION, 20)
       : DEFAULT_META_GRAPH_VERSION,
+    credentialsReady,
     configured: Boolean(baseUrl && vault.configured && credentialsReady),
   };
 }
@@ -981,7 +982,7 @@ export function createOAuthService({
     return providerConfiguration(provider, environment, vault);
   }
 
-  function catalog(connections = {}) {
+  function catalog(connections = {}, readiness = {}) {
     return Object.keys(PROVIDERS).map((provider) => {
       const providerConfig = config(provider);
       const connection = connections[provider] || {};
@@ -998,6 +999,13 @@ export function createOAuthService({
         connectUrl: providerConfig.configured ? `/api/v1/oauth/${provider}/start` : null,
         callbackUrl: providerConfig.callbackUrl || null,
         account,
+        setup: {
+          callbackReady: Boolean(providerConfig.baseUrl),
+          tokenEncryptionReady: vault.configured,
+          developerCredentialsReady: providerConfig.credentialsReady,
+          serviceRoleReady: provider === "snapchat" ? Boolean(text(environment.SUPABASE_SERVICE_ROLE_KEY, 500)) : null,
+          webhookSchemaReady: provider === "snapchat" ? Boolean(readiness.providerWebhookSchemaReady) : null,
+        },
         tokenPolicy: "Access and refresh tokens are encrypted before storage and never returned to the browser.",
       };
     });
