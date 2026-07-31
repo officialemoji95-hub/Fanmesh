@@ -127,6 +127,50 @@ test("Meta connection summaries expose aggregate assets without credentials or l
   assert.equal(JSON.stringify(state).includes("must-not-leak"), false);
 });
 
+test("Snapchat connection summaries expose safe campaign hierarchy and reporting metrics", () => {
+  const state = publicConnectionState({
+    status: "connected",
+    external_account_id: "org-1",
+    scopes: ["snapchat-marketing-api"],
+    metadata: {
+      credentials: "v1.encrypted.never-return",
+      public: {
+        organizations: [{ id: "org-1", name: "Artist Business", private_note: "must-not-leak" }],
+        campaigns: [{
+          id: "campaign-1",
+          adAccountId: "ad-1",
+          adAccountName: "Release Ads",
+          currency: "USD",
+          name: "New single launch",
+          status: "ACTIVE",
+          objectiveType: "SALES",
+          deliveryStatus: ["DELIVERING"],
+          dailyBudget: 25,
+          updatedAt: "2026-07-31T12:00:00.000Z",
+          unsafe: "must-not-leak",
+          stats: { impressions: 125000, swipes: 3200, spend: 420.5, nativeLeads: 38, purchases: 12, signUps: 19, conversions: 31, spendMicros: 420500000 },
+        }],
+        adSquads: [{ id: "squad-1", adAccountId: "ad-1", campaignId: "campaign-1", name: "Core fans", status: "ACTIVE", optimizationGoal: "SWIPES" }],
+        ads: [{ id: "snap-ad-1", adAccountId: "ad-1", campaignId: "campaign-1", adSquadId: "squad-1", creativeId: "must-not-leak", name: "Release teaser", status: "ACTIVE", reviewStatus: "APPROVED" }],
+        campaignSummaryLifetime: { currency: "USD", spend: 420.5, impressions: 125000, swipes: 3200, nativeLeads: 38, purchases: 12, signUps: 19, conversions: 31 },
+      },
+      metrics: { adAccounts: 1, campaigns: 1, activeCampaigns: 1, adSquads: 1, ads: 1 },
+    },
+  });
+  assert.equal(state.account.name, "Artist Business");
+  assert.equal(state.account.campaignCount, 1);
+  assert.equal(state.account.adSquadCount, 1);
+  assert.equal(state.account.adCount, 1);
+  assert.equal(state.account.snapchatCampaigns[0].stats.spend, 420.5);
+  assert.equal(state.account.snapchatCampaigns[0].stats.conversions, 31);
+  assert.equal(state.account.snapchatAdSquads[0].campaignId, "campaign-1");
+  assert.equal(state.account.snapchatAds[0].reviewStatus, "APPROVED");
+  assert.equal(state.account.snapchatCampaignSummaryLifetime.nativeLeads, 38);
+  assert.equal(JSON.stringify(state).includes("credentials"), false);
+  assert.equal(JSON.stringify(state).includes("must-not-leak"), false);
+  assert.equal(JSON.stringify(state).includes("spendMicros"), false);
+});
+
 test("audience commits upsert fans and record consent provenance", async () => {
   const calls = [];
   function response(payload, status = 200) {
