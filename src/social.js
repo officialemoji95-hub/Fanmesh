@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 export const SOCIAL_PLATFORMS = ["instagram", "facebook", "tiktok", "youtube", "spotify"];
-export const LEAD_SOURCES = ["meta_ads", "facebook_export", "instagram_export", "tiktok_ads", "google_ads", "youtube_export", "csv"];
+export const LEAD_SOURCES = ["meta_ads", "facebook_export", "instagram_export", "tiktok_ads", "snapchat_ads", "x_ads", "google_ads", "youtube_ads", "threads_ads", "youtube_export", "csv"];
 export const IDENTITY_SOURCES = ["facebook_export", "instagram_export", "tiktok_export", "youtube_export"];
 
 const PLATFORM_CAPABILITIES = {
@@ -43,7 +43,11 @@ const IMPORT_CAPABILITIES = {
   instagram_export: { label: "Instagram data export", authMethod: "official_export", capabilities: ["authorized_export", "identity_signal"] },
   tiktok_export: { label: "TikTok data export", authMethod: "official_export", capabilities: ["authorized_export", "identity_signal"] },
   tiktok_ads: { label: "TikTok Ads leads", authMethod: "official_export_or_api", capabilities: ["lead_import", "ad_attribution"] },
+  snapchat_ads: { label: "Snapchat Ads leads", authMethod: "official_export_or_api", capabilities: ["lead_import", "ad_attribution"] },
+  x_ads: { label: "X Ads leads", authMethod: "official_export_or_api", capabilities: ["lead_import", "ad_attribution"] },
   google_ads: { label: "Google Ads leads", authMethod: "official_export_or_api", capabilities: ["lead_import", "ad_attribution"] },
+  youtube_ads: { label: "YouTube Ads leads", authMethod: "official_export_or_api", capabilities: ["lead_import", "ad_attribution"] },
+  threads_ads: { label: "Threads Ads leads", authMethod: "official_export_or_api", capabilities: ["lead_import", "ad_attribution"] },
   youtube_export: { label: "YouTube data export", authMethod: "official_export", capabilities: ["authorized_export", "identity_signal"] },
   csv: { label: "Consent export (CSV)", authMethod: "file_upload", capabilities: ["lead_import"] },
 };

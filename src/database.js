@@ -374,6 +374,115 @@ export function createWorkspaceStore({ environment = process.env, fetchImpl = gl
       }));
   }
 
+  async function getOutreachCandidates(user, token, { frequencyHours = 48 } = {}) {
+    const workspace = await workspaceFor(user, token);
+    const workspaceId = queryValue(workspace.id);
+    const cutoff = new Date(Date.now() - Math.max(1, Number(frequencyHours) || 48) * 60 * 60 * 1000).toISOString();
+    const [fans, recentDeliveries] = await Promise.all([
+      request(
+        `/rest/v1/fans?select=id,display_name,email,phone,consented_channels,source_provenance&workspace_id=eq.${workspaceId}&consented_channels=not.eq.%7B%7D&order=last_seen.desc.nullslast&limit=1000`,
+        token,
+      ),
+      request(
+        `/rest/v1/outreach_deliveries?select=fan_id,channel,status&workspace_id=eq.${workspaceId}&sent_at=gte.${queryValue(cutoff)}&status=in.(queued,sent,delivered)&limit=5000`,
+        token,
+      ),
+    ]);
+    const recentByFan = new Map();
+    for (const row of recentDeliveries || []) {
+      const channels = recentByFan.get(row.fan_id) || [];
+      if (!channels.includes(row.channel)) channels.push(row.channel);
+      recentByFan.set(row.fan_id, channels);
+    }
+    return {
+      workspace,
+      candidates: (fans || []).map((row) => ({ ...row, recent_channels: recentByFan.get(row.id) || [] })),
+      frequencyHours: Math.max(1, Number(frequencyHours) || 48),
+    };
+  }
+
+  async function createOutreachCampaign(user, token, plan) {
+    const workspace = await workspaceFor(user, token);
+    const existing = await request(
+      `/rest/v1/outreach_campaigns?select=id,status,summary,created_at&workspace_id=eq.${queryValue(workspace.id)}&external_key=eq.${queryValue(plan.id)}&limit=1`,
+      token,
+    );
+    if (existing?.length) throw new DatabaseError("This outreach launch has already been submitted", 409);
+    const rows = await request("/rest/v1/outreach_campaigns", token, {
+      method: "POST",
+      prefer: "return=representation",
+      body: [{
+        workspace_id: workspace.id,
+        created_by: user.id,
+        external_key: plan.id,
+        title: plan.title,
+        destination: plan.destination,
+        subject: plan.subject,
+        message: plan.message,
+        channels: plan.channels,
+        sources: plan.sources,
+        holdout_percent: plan.holdoutPercent,
+        status: "sending",
+        summary: plan.audience,
+      }],
+    });
+    const campaign = rows?.[0];
+    if (!campaign?.id) throw new DatabaseError("Outreach campaign could not be created", 502);
+    return { workspace, campaign };
+  }
+
+  async function finishOutreachCampaign(user, token, campaignId, deliveries = [], summary = {}) {
+    const workspace = await workspaceFor(user, token);
+    const sentAt = new Date().toISOString();
+    const rows = deliveries.map((delivery) => ({
+      campaign_id: campaignId,
+      workspace_id: workspace.id,
+      fan_id: delivery.fanId,
+      channel: delivery.channel,
+      provider: delivery.provider,
+      provider_message_id: delivery.providerMessageId || null,
+      status: delivery.status,
+      reason: delivery.reason || null,
+      sent_at: delivery.status === "sent" || delivery.status === "delivered" ? sentAt : null,
+    }));
+    if (rows.length) {
+      await request("/rest/v1/outreach_deliveries", token, {
+        method: "POST",
+        prefer: "return=minimal",
+        body: rows,
+      });
+    }
+    const sent = deliveries.filter((item) => item.status === "sent" || item.status === "delivered").length;
+    const failed = deliveries.filter((item) => item.status === "failed").length;
+    const status = sent > 0 && failed === 0 ? "completed" : sent > 0 ? "partial" : "failed";
+    await request(`/rest/v1/outreach_campaigns?id=eq.${queryValue(campaignId)}&workspace_id=eq.${queryValue(workspace.id)}`, token, {
+      method: "PATCH",
+      prefer: "return=minimal",
+      body: { status, summary: { ...summary, sent, failed }, completed_at: sentAt },
+    });
+    return { campaignId, status, sent, failed, ...summary };
+  }
+
+  async function listOutreachCampaigns(user, token, limit = 10) {
+    const workspace = await workspaceFor(user, token);
+    const rows = await request(
+      `/rest/v1/outreach_campaigns?select=id,external_key,title,destination,channels,sources,status,summary,created_at,completed_at&workspace_id=eq.${queryValue(workspace.id)}&order=created_at.desc&limit=${Math.min(50, Math.max(1, limit))}`,
+      token,
+    );
+    return (rows || []).map((row) => ({
+      id: row.external_key,
+      databaseId: row.id,
+      title: row.title,
+      destination: row.destination,
+      channels: row.channels,
+      sources: row.sources,
+      status: row.status,
+      summary: row.summary,
+      createdAt: row.created_at,
+      completedAt: row.completed_at,
+    }));
+  }
+
   function chunks(values, size = 75) {
     const result = [];
     for (let index = 0; index < values.length; index += size) result.push(values.slice(index, index + size));
@@ -723,8 +832,12 @@ export function createWorkspaceStore({ environment = process.env, fetchImpl = gl
     config,
     getActivationEligibility,
     getDashboard,
+    getOutreachCandidates,
     getSourceConnection,
     listActivations,
+    listOutreachCampaigns,
+    createOutreachCampaign,
+    finishOutreachCampaign,
     saveExperiment,
     saveSourceConnection,
     workspaceFor,
