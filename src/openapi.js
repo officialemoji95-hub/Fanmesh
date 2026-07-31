@@ -2,7 +2,7 @@ export const openApiDocument = {
   openapi: "3.1.0",
   info: {
     title: "FanMesh API",
-    version: "0.14.0",
+    version: "0.15.0",
     description: "Audience intelligence API for consented fan relationships.",
   },
   servers: [{ url: "/api/v1" }],
@@ -66,7 +66,7 @@ export const openApiDocument = {
     },
     "/connections": {
       get: {
-        summary: "List supported authorized social and lead sources",
+        summary: "List supported authorized sources with safe account, campaign, and performance summaries",
         security: [{ creatorSession: [] }],
         responses: { 200: { description: "Connection capability catalog" } },
       },
