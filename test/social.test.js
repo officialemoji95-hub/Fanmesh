@@ -44,6 +44,47 @@ test("lead import preview rejects missing consent and deduplicates contacts", ()
   assert.match(preview.invalid[1].reason, /consent/);
 });
 
+test("official Snapchat lead exports accept common column labels only after creator attestation", () => {
+  const rows = [{
+    "Email Address": " SnapFan@Example.com ",
+    "Mobile Number": "+234 801 234 5678",
+    "First Name": "Snap",
+    "Last Name": "Fan",
+    "Lead ID": "snap-lead-1",
+    "Submission Time": "2026-07-31T12:00:00Z",
+    "Campaign ID": "campaign-1",
+  }];
+  const withoutAttestation = previewLeadImport({ source: "snapchat_ads", rows });
+  assert.equal(withoutAttestation.summary.valid, 0);
+  assert.match(withoutAttestation.invalid[0].reason, /consent/);
+
+  const preview = previewLeadImport({
+    source: "snapchat_ads",
+    rows,
+    confirmedAuthorized: true,
+    confirmedConsent: true,
+    consentChannels: ["email", "sms"],
+  });
+  assert.equal(preview.summary.valid, 1);
+  assert.equal(preview.summary.creatorAttested, true);
+  assert.equal(preview.valid[0].email, "snapfan@example.com");
+  assert.equal(preview.valid[0].phone, "+2348012345678");
+  assert.equal(preview.valid[0].name, "Snap Fan");
+  assert.equal(preview.valid[0].sourceId, "snap-lead-1");
+  assert.equal(preview.valid[0].campaignId, "campaign-1");
+  assert.deepEqual(preview.valid[0].consent.channels, ["email", "sms"]);
+  assert.equal(preview.valid[0].consent.source, "snapchat_ads:official_export:creator_attested");
+});
+
+test("official lead-export attestation requires an explicit permitted channel", () => {
+  assert.throws(() => previewLeadImport({
+    source: "snapchat_ads",
+    rows: [{ "Email Address": "fan@example.com", "Submission Time": "2026-07-31T12:00:00Z" }],
+    confirmedAuthorized: true,
+    confirmedConsent: true,
+  }), /Choose at least one contact channel/);
+});
+
 test("records with both contact methods require channel-specific consent", () => {
   const result = normalizeLead({
     email: "fan@example.com",
