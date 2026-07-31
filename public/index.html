@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="FanMesh unifies consented fan relationships and turns them into useful audience intelligence.">
     <title>FanMesh — Own the relationship</title>
-    <link rel="stylesheet" href="/styles.css?v=0.10.0">
+    <link rel="stylesheet" href="/styles.css?v=0.11.0">
   </head>
   <body>
     <section class="auth-gate" id="auth-gate" aria-labelledby="auth-title" hidden>
@@ -65,7 +65,7 @@
           <div class="top-actions">
             <span class="demo-pill" id="data-mode-pill"><i></i> Checking data</span>
             <button class="button secondary" data-scroll="connections">＋ Connect source</button>
-            <button class="button primary" data-scroll="organic-pulse">Start organic pulse ↗</button>
+            <button class="button primary" data-scroll="organic-pulse">Prepare organic pulse ↗</button>
           </div>
         </header>
 
@@ -330,30 +330,44 @@
         <section class="campaign-grid" id="campaign">
           <article class="panel campaign-builder">
             <div class="panel-heading">
-              <div><p class="eyebrow">Fan alert</p><h2>Help real fans find this post</h2></div>
-              <span class="status good">Explainable reach</span>
+              <div><p class="eyebrow">Lead Outreach</p><h2>Send this post to consented leads</h2></div>
+              <span class="status warning" id="outreach-readiness">Checking senders…</span>
             </div>
-            <p class="panel-copy">Prepare an attribution link and see exactly how many fans are directly alertable. FanMesh saves the campaign but sends nothing until a permitted delivery provider is connected.</p>
+            <p class="panel-copy">FanMesh selects only authorized ad leads with active email or SMS consent, applies a 48-hour frequency cap, and records every provider result. Raw contact details stay on the server.</p>
             <form id="campaign-form">
               <label>Post or release title<input name="title" placeholder="New video, single, product, or announcement" minlength="2" maxlength="100" required></label>
               <label>Public post or destination URL<input name="contentUrl" type="url" placeholder="https://…" maxlength="1500" required></label>
-              <label>Goal<select name="objective"><option value="release">Release music or content</option><option value="evergreen">Keep a post moving</option><option value="sales">Drive sales</option><option value="community">Grow community</option></select></label>
-              <label>Alert message<textarea name="message" maxlength="280" placeholder="Tell opted-in fans why this is worth their attention."></textarea></label>
+              <label>Email subject<input name="subject" placeholder="A short reason to look" maxlength="150"></label>
+              <label>Message<textarea name="message" minlength="2" maxlength="500" placeholder="Tell opted-in leads why this post is worth their attention." required></textarea></label>
               <fieldset>
                 <legend>Direct alert channels</legend>
                 <label class="check"><input type="checkbox" name="channels" value="email" checked> Email</label>
                 <label class="check"><input type="checkbox" name="channels" value="sms"> SMS</label>
               </fieldset>
+              <fieldset class="source-picker">
+                <legend>Authorized lead sources</legend>
+                <label class="check"><input type="checkbox" name="sources" value="meta_ads" checked> Meta Ads</label>
+                <label class="check"><input type="checkbox" name="sources" value="tiktok_ads" checked> TikTok Ads</label>
+                <label class="check"><input type="checkbox" name="sources" value="snapchat_ads" checked> Snapchat Ads</label>
+                <label class="check"><input type="checkbox" name="sources" value="x_ads" checked> X Ads</label>
+                <label class="check"><input type="checkbox" name="sources" value="google_ads" checked> Google Ads</label>
+                <label class="check"><input type="checkbox" name="sources" value="youtube_ads" checked> YouTube Ads</label>
+                <label class="check"><input type="checkbox" name="sources" value="threads_ads" checked> Threads Ads</label>
+                <label class="check"><input type="checkbox" name="sources" value="csv" checked> Consent import</label>
+              </fieldset>
               <label>Measurement holdout<select name="holdoutPercent"><option value="0">No holdout yet</option><option value="5">5% holdout</option><option value="10" selected>10% holdout</option></select></label>
               <label class="activation-confirm"><input name="confirmedOwnedContent" type="checkbox" required> I control this content or destination.</label>
-              <button class="button primary" type="submit">Prepare fan alert ↗</button>
+              <label class="activation-confirm"><input name="confirmedAudienceRights" type="checkbox" required> Every selected lead has active permission for the channel used.</label>
+              <button class="button primary" type="submit">Preview eligible leads ↗</button>
+              <label class="activation-confirm launch-confirm"><input name="confirmedSend" type="checkbox"> I reviewed the cohort and want to send now.</label>
+              <button class="button secondary" id="launch-outreach" type="button" disabled>Launch outreach</button>
             </form>
           </article>
           <article class="panel sequence-panel" aria-live="polite">
             <div class="empty-sequence" id="campaign-result">
               <span class="sequence-icon">↗</span>
-              <h3>Your reach report will appear here</h3>
-              <p>Add the live post link. FanMesh will separate known platform followers from fans you can alert directly.</p>
+              <h3>Your private lead cohort will appear here</h3>
+              <p>Preview first. FanMesh returns counts and provider readiness—not email addresses or phone numbers.</p>
             </div>
           </article>
         </section>
@@ -370,6 +384,6 @@
       </main>
     </div>
     <div class="toast" role="status" aria-live="polite"></div>
-    <script src="/app.js?v=0.10.0" type="module"></script>
+    <script src="/app.js?v=0.11.0" type="module"></script>
   </body>
 </html>

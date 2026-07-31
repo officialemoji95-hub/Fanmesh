@@ -362,6 +362,15 @@ td { padding: 12px 20px; border-top: 1px solid #efede8; vertical-align: middle; 
 .campaign-builder legend { padding: 0 4px; color: #69696f; font-size: 9px; font-weight: 700; }
 .campaign-builder .check, .campaign-builder .activation-confirm { display: flex; grid-template-columns: auto 1fr; align-items: center; gap: 6px; }
 .campaign-builder input[type="checkbox"] { accent-color: var(--purple); }
+.campaign-builder .source-picker { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.campaign-builder .source-picker legend { grid-column: 1 / -1; }
+.campaign-builder .launch-confirm { margin-top: 3px; padding: 9px; border: 1px solid #dedcd5; border-radius: 7px; background: #fbfaf7; }
+.campaign-builder #launch-outreach:not(:disabled) { border-color: var(--green); color: #25330a; background: #efffd1; }
+.provider-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.provider-card { padding: 10px; border: 1px solid #e0ded8; border-radius: 9px; background: #fbfaf7; }
+.provider-card strong { display: block; font-size: 10px; text-transform: uppercase; }
+.provider-card span { display: block; margin-top: 4px; color: #77777e; font-size: 8px; line-height: 1.45; }
+.provider-card.ready { border-color: #bddd75; background: #f7ffe8; }
 .campaign-builder .button { margin-top: 3px; }
 .sequence-panel { min-height: 290px; }
 .empty-sequence { height: 100%; display: grid; place-content: center; text-align: center; }
