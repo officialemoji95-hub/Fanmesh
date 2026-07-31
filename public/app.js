@@ -579,6 +579,43 @@ function renderSnapchatLeadCapture(catalog) {
     : "<strong>No live forms enabled</strong><span>Select a form and confirm its disclosure. Existing historical leads must be imported from an official export.</span>";
 }
 
+function renderSnapchatReadiness(catalog) {
+  const target = document.querySelector("#snapchat-readiness");
+  const grid = document.querySelector("#snapchat-readiness-grid");
+  const actions = document.querySelector("#snapchat-readiness-actions");
+  const status = document.querySelector("#snapchat-readiness-status");
+  const source = catalog.social.find((item) => item.platform === "snapchat");
+  if (!source) {
+    target.hidden = true;
+    return;
+  }
+  const setup = source.setup || {};
+  const forms = Array.isArray(source.account?.leadForms) ? source.account.leadForms : [];
+  const connected = source.status === "connected";
+  const steps = [
+    { ready: setup.developerCredentialsReady, title: "Snap developer app", detail: "SNAPCHAT_CLIENT_ID and SNAPCHAT_CLIENT_SECRET are stored in Render." },
+    { ready: setup.callbackReady && setup.tokenEncryptionReady, title: "Secure OAuth callback", detail: "The HTTPS callback and encrypted token vault are configured." },
+    { ready: setup.webhookSchemaReady, title: "Supabase webhook tables", detail: "The 202607310002 Snapchat migration has been applied." },
+    { ready: setup.serviceRoleReady, title: "Verified webhook writer", detail: "The server-only Supabase service-role secret is available to signed webhooks." },
+    { ready: connected && forms.length > 0, title: "Authorized lead forms", detail: connected ? `${numberFormatter.format(forms.length)} Lead Generation Form${forms.length === 1 ? "" : "s"} discovered.` : "Connect the Snapchat organization that owns the ad account." },
+  ];
+  const complete = steps.filter((step) => step.ready).length;
+  target.hidden = false;
+  status.className = `status ${complete === steps.length ? "good" : "warning"}`;
+  status.textContent = `${complete} of ${steps.length} ready`;
+  grid.innerHTML = steps.map((step, index) => `
+    <article class="snapchat-readiness-step ${step.ready ? "ready" : "pending"}">
+      <i>${step.ready ? "✓" : index + 1}</i><strong>${escapeHtml(step.title)}</strong><span>${escapeHtml(step.detail)}</span>
+    </article>`).join("");
+  const connectAction = source.configured && source.connectUrl && !connected
+    ? `<a class="connection-button" href="${escapeHtml(source.connectUrl)}">Connect Snapchat ↗</a>`
+    : "";
+  actions.innerHTML = `
+    <a class="connection-button" href="https://business.snapchat.com/" target="_blank" rel="noopener noreferrer">Open Snap Business Manager ↗</a>
+    ${connectAction}
+    ${source.callbackUrl ? `<code>${escapeHtml(source.callbackUrl)}</code>` : ""}`;
+}
+
 function renderOrganicPulse(organic = {}) {
   const list = document.querySelector("#organic-post-list");
   const summary = document.querySelector("#organic-summary");
@@ -636,6 +673,7 @@ function renderConnections(catalog) {
       `}
     </article>
   `).join("");
+  renderSnapchatReadiness(catalog);
   renderMetaPerformance(catalog);
   renderMetaLeadImport(catalog);
   renderSnapchatLeadCapture(catalog);
@@ -1347,15 +1385,25 @@ document.querySelector("#audience-import-form").addEventListener("submit", async
     if (!file) throw new Error("Choose a CSV file first");
     if (file.size > 1.8 * 1024 * 1024) throw new Error("CSV files must be smaller than 1.8 MB");
     const source = form.elements.source.value;
+    const officialExport = source !== "csv";
+    const consentChannels = new FormData(form).getAll("consentChannels");
+    const disclosureConfirmed = document.querySelector("#import-disclosure-confirmed").checked;
+    if (officialExport && !consentChannels.length) throw new Error("Choose at least one channel permitted by the lead form");
+    if (officialExport && !disclosureConfirmed) throw new Error("Confirm the official lead form disclosure before previewing contacts");
     const rows = recordsFromCsv(await file.text()).map((row) => ({ ...row, source }));
+    const attestation = officialExport ? {
+      confirmedAuthorized: true,
+      confirmedConsent: true,
+      consentChannels,
+    } : {};
     const response = await fetch("/api/v1/imports/leads/preview", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ source, rows }),
+      body: JSON.stringify({ source, rows, ...attestation }),
     });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error?.message || "Could not preview this import");
-    pendingImport = { source, rows, preview: body.data };
+    pendingImport = { source, rows, preview: body.data, attestation };
     renderImportPreview(body.data);
     authorization.disabled = body.data.summary.valid === 0;
   } catch (error) {
@@ -1381,7 +1429,12 @@ document.querySelector("#commit-import").addEventListener("click", async (event)
     const response = await fetch("/api/v1/imports/leads/commit", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ source: pendingImport.source, rows: pendingImport.rows, confirmedAuthorized: true }),
+      body: JSON.stringify({
+        source: pendingImport.source,
+        rows: pendingImport.rows,
+        ...pendingImport.attestation,
+        confirmedAuthorized: true,
+      }),
     });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error?.message || "Could not commit this import");
@@ -1397,6 +1450,12 @@ document.querySelector("#commit-import").addEventListener("click", async (event)
   } finally {
     button.textContent = "Commit accepted records ↗";
   }
+});
+
+document.querySelector("#audience-import-form select[name=source]").addEventListener("change", (event) => {
+  const officialExport = event.currentTarget.value !== "csv";
+  document.querySelector("#official-lead-attestation").hidden = !officialExport;
+  if (!officialExport) document.querySelector("#import-disclosure-confirmed").checked = false;
 });
 
 document.querySelector("#auth-toggle").addEventListener("click", () => {
