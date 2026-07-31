@@ -44,6 +44,137 @@ test("provider catalog activates only fully configured OAuth apps", () => {
   assert.equal(meta.connectUrl, null);
 });
 
+test("Snapchat callback unwraps organizations and discovers authorized lead forms", async () => {
+  let savedConnection;
+  const service = createOAuthService({
+    environment: {
+      NODE_ENV: "production",
+      APP_BASE_URL: "https://fanmesh.example",
+      OAUTH_TOKEN_ENCRYPTION_KEY: encryptionKey,
+      SNAPCHAT_CLIENT_ID: "snap-client",
+      SNAPCHAT_CLIENT_SECRET: "snap-secret",
+    },
+    workspaceStore: {
+      async saveSourceConnection(user, accessToken, connection) {
+        assert.equal(user.id, "user-1");
+        assert.equal(accessToken, "supabase-token");
+        savedConnection = connection;
+        return { status: connection.status };
+      },
+    },
+    async fetchImpl(url, options = {}) {
+      const value = String(url);
+      if (value.includes("/login/oauth2/access_token")) {
+        return response({ access_token: "snap-access", refresh_token: "snap-refresh", expires_in: 3600, scope: "snapchat-marketing-api" });
+      }
+      if (value.includes("/v1/me/organizations")) {
+        assert.equal(options.headers.authorization, "Bearer snap-access");
+        return response({ organizations: [{ organization: {
+          id: "org-1",
+          name: "Artist Business",
+          roles: ["admin"],
+          ad_accounts: [{ id: "ad-1", name: "Release Ads", status: "ACTIVE", currency: "USD", timezone: "Africa/Lagos", roles: ["admin"] }],
+        } }] });
+      }
+      if (value.includes("/v1/adaccounts/ad-1/lead_generation_forms")) {
+        return response({ lead_generation_forms: [{ lead_generation_form: {
+          id: "form-1",
+          ad_account_id: "ad-1",
+          name: "Release waitlist",
+          form_fields: [{ type: "FIRST_NAME" }, { type: "EMAIL" }],
+          legal_disclosures: { description: "Creator updates", consent_form_fields: [{ required: true, consent_description: "Send updates" }] },
+        } }] });
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    },
+  });
+  const session = { user: { id: "user-1" }, accessToken: "supabase-token" };
+  const started = await service.begin("snapchat", session);
+  const state = new URL(started.redirectUrl).searchParams.get("state");
+  const result = await service.callback("snapchat", session, new URL(
+    `https://fanmesh.example/api/v1/oauth/snapchat/callback?code=code-1&state=${encodeURIComponent(state)}`,
+  ), { headers: { cookie: cookieHeader(started.cookies[0]) } });
+
+  assert.equal(result.account, "Artist Business");
+  assert.equal(savedConnection.metadata.metrics.adAccounts, 1);
+  assert.equal(savedConnection.metadata.metrics.leadForms, 1);
+  assert.equal(savedConnection.metadata.public.leadForms[0].id, "form-1");
+  assert.deepEqual(savedConnection.metadata.public.leadForms[0].contactFields, ["EMAIL"]);
+  assert.equal(savedConnection.metadata.public.leadForms[0].hasLegalDisclosure, true);
+  assert.equal(JSON.stringify(savedConnection).includes("snap-access"), false);
+});
+
+test("Snapchat live-lead setup creates a verified form webhook and stores no plaintext secret", async () => {
+  let savedWebhook;
+  let savedConnection;
+  const environment = {
+    NODE_ENV: "production",
+    APP_BASE_URL: "https://fanmesh.example",
+    OAUTH_TOKEN_ENCRYPTION_KEY: encryptionKey,
+    SNAPCHAT_CLIENT_ID: "snap-client",
+    SNAPCHAT_CLIENT_SECRET: "snap-secret",
+  };
+  const vault = createTokenVault(environment);
+  const credentials = vault.seal({
+    accessToken: "snap-access",
+    refreshToken: "snap-refresh",
+    expiresAt: "2026-09-01T00:00:00.000Z",
+    grantedScopes: ["snapchat-marketing-api"],
+    providerAssets: {},
+  });
+  const service = createOAuthService({
+    environment,
+    now: () => Date.parse("2026-07-31T10:00:00.000Z"),
+    workspaceStore: {
+      async getSourceConnection() {
+        return {
+          status: "connected",
+          external_account_id: "org-1",
+          scopes: ["snapchat-marketing-api"],
+          metadata: {
+            credentials,
+            public: { leadForms: [{ id: "form-1", adAccountId: "ad-1", name: "Release waitlist", contactFields: ["EMAIL"], webhookStatus: "not_configured" }] },
+            metrics: { adAccounts: 1, leadForms: 1 },
+          },
+        };
+      },
+      async saveProviderWebhook(user, accessToken, webhook) {
+        assert.equal(user.id, "user-1");
+        assert.equal(accessToken, "supabase-token");
+        savedWebhook = webhook;
+        return { id: "webhook-1" };
+      },
+      async saveSourceConnection(user, accessToken, connection) {
+        savedConnection = connection;
+        return connection;
+      },
+    },
+    async fetchImpl(url, options = {}) {
+      assert.equal(String(url), "https://adsapi.snapchat.com/v1/lead_gen/integrations/public_webhook");
+      assert.equal(options.method, "POST");
+      const request = JSON.parse(options.body).webhook_integrations[0];
+      assert.equal(request.form_id, "form-1");
+      assert.match(request.webhook_url, /^https:\/\/fanmesh\.example\/api\/v1\/webhooks\/snapchat\/leads\//);
+      return response({ webhookIntegrations: [{ webhookIntegration: {
+        formId: "form-1",
+        adAccountId: "ad-1",
+        integrationId: "integration-1",
+        hmacSecret: "never-plaintext",
+      } }] });
+    },
+  });
+  const result = await service.configureSnapchatLeadWebhooks(
+    { user: { id: "user-1" }, accessToken: "supabase-token" },
+    { formIds: ["form-1"], consentChannels: ["email"], confirmedAuthorized: true, confirmedConsent: true },
+  );
+  assert.equal(result.webhookCount, 1);
+  assert.equal(savedWebhook.externalFormId, "form-1");
+  assert.equal(savedWebhook.consentedChannels[0], "email");
+  assert.equal(savedWebhook.encryptedSecret.includes("never-plaintext"), false);
+  assert.equal(savedConnection.metadata.public.leadForms[0].webhookStatus, "active");
+  assert.equal(JSON.stringify(savedConnection).includes("never-plaintext"), false);
+});
+
 test("TikTok callback verifies state, encrypts tokens, and stores a safe account summary", async () => {
   let savedConnection;
   const now = Date.parse("2026-07-29T12:00:00.000Z");
