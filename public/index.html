@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="FanMesh unifies consented fan relationships and turns them into useful audience intelligence.">
     <title>FanMesh — Own the relationship</title>
-    <link rel="stylesheet" href="/styles.css?v=0.11.0">
+    <link rel="stylesheet" href="/styles.css?v=0.12.0">
   </head>
   <body>
     <section class="auth-gate" id="auth-gate" aria-labelledby="auth-title" hidden>
@@ -27,18 +27,19 @@
     </section>
     <div class="app-shell">
       <aside class="sidebar">
-        <a class="brand" href="#top" aria-label="FanMesh dashboard">
+        <a class="brand" href="#/overview" data-route="overview" aria-label="FanMesh dashboard">
           <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
           <span>Fan<span>Mesh</span></span>
         </a>
 
         <nav class="nav" aria-label="Primary navigation">
           <p class="eyebrow">Workspace</p>
-          <a class="active" href="#overview"><span class="nav-icon">⌁</span> Overview</a>
-          <a href="#audience"><span class="nav-icon">◎</span> Audience <b id="audience-count">—</b></a>
-          <a href="#campaign"><span class="nav-icon">↗</span> Activations</a>
-          <a href="#connections"><span class="nav-icon">⌘</span> Connections</a>
-          <a href="/api/v1/openapi.json" target="_blank"><span class="nav-icon">{ }</span> Developer API</a>
+          <a class="active" href="#/overview" data-route="overview"><span class="nav-icon">⌁</span> Overview</a>
+          <a href="#/audience" data-route="audience"><span class="nav-icon">◎</span> Audience <b id="audience-count">—</b></a>
+          <a href="#/outreach" data-route="outreach"><span class="nav-icon">↗</span> Outreach</a>
+          <a href="#/organic" data-route="organic"><span class="nav-icon">◌</span> Organic Pulse</a>
+          <a href="#/connections" data-route="connections"><span class="nav-icon">⌘</span> Connections</a>
+          <a href="#/developer" data-route="developer"><span class="nav-icon">{ }</span> Developer</a>
         </nav>
 
         <section class="capture-card">
@@ -59,13 +60,14 @@
         <header class="topbar">
           <button class="mobile-menu" aria-label="Open navigation">☰</button>
           <div>
-            <p class="breadcrumb">FanMesh / <span>Overview</span></p>
-            <h1>Your audience, finally visible.</h1>
+            <p class="breadcrumb">FanMesh / <span id="page-breadcrumb">Overview</span></p>
+            <h1 id="page-title">Your audience, finally visible.</h1>
+            <p class="page-description" id="page-description">See the relationship you control and the reach still trapped behind platform gates.</p>
           </div>
           <div class="top-actions">
             <span class="demo-pill" id="data-mode-pill"><i></i> Checking data</span>
-            <button class="button secondary" data-scroll="connections">＋ Connect source</button>
-            <button class="button primary" data-scroll="organic-pulse">Prepare organic pulse ↗</button>
+            <button class="button secondary" data-route="connections">＋ Connect source</button>
+            <button class="button primary" data-route="outreach">Create outreach ↗</button>
           </div>
         </header>
 
@@ -73,7 +75,7 @@
           <strong>Demo mode:</strong> add your Supabase project URL and public publishable key in Render to activate accounts and private workspace data.
         </section>
 
-        <section class="notice" aria-label="Product principle">
+        <section class="notice" data-page="overview" aria-label="Product principle">
           <span class="notice-icon">✦</span>
           <div>
             <strong>Stop renting your reach.</strong>
@@ -82,7 +84,7 @@
           <button aria-label="Dismiss notice">×</button>
         </section>
 
-        <section class="metrics" id="overview" aria-label="Audience metrics">
+        <section class="metrics" id="overview" data-page="overview" aria-label="Audience metrics">
           <article class="metric-card">
             <div class="metric-label"><span>Potential audience</span><i class="metric-icon lavender">◎</i></div>
             <strong id="total-followers">—</strong>
@@ -105,12 +107,23 @@
           </article>
         </section>
 
-        <section class="panel social-launchpad" id="connections">
+        <section class="panel social-launchpad" id="connections" data-page="connections" hidden>
           <div class="panel-heading">
             <div><p class="eyebrow">Account connections</p><h2>Connect once. Keep your signals moving.</h2></div>
             <span class="status good">Official APIs only</span>
           </div>
           <p class="panel-copy">Authorize each creator or business account through its official consent screen. FanMesh encrypts the returned tokens, discovers the assets you approved, and syncs aggregate audience and ad-account signals without collecting your platform passwords.</p>
+          <section class="connector-roadmap" aria-labelledby="connector-roadmap-title">
+            <div class="roadmap-heading">
+              <div><p class="eyebrow">Integration rollout</p><h3 id="connector-roadmap-title">Finish one data loop. Reuse it everywhere.</h3></div>
+              <span class="status good">Meta first</span>
+            </div>
+            <div class="roadmap-grid">
+              <article class="roadmap-card current"><span>01 · Current focus</span><strong>Meta end to end</strong><p>Complete Facebook Pages, Instagram insights, ad accounts, Instant Forms, token refresh, webhooks, and measured lead attribution.</p></article>
+              <article class="roadmap-card next"><span>02 · Next adapter</span><strong>Snapchat Business</strong><p>Connect organizations and ad accounts through the Marketing API, then add campaign reporting and authorized lead ingestion where Snap permits it.</p></article>
+              <article class="roadmap-card"><span>03 · Expansion lane</span><strong>TikTok, Google/YouTube, X and Threads</strong><p>Apply the same connection, sync, consent provenance, health, and attribution contract after each developer product is approved.</p></article>
+            </div>
+          </section>
           <div class="source-grid" id="source-grid" aria-live="polite">
             <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
           </div>
@@ -234,7 +247,7 @@
           </div>
         </section>
 
-        <section class="dashboard-grid">
+        <section class="dashboard-grid" data-page="overview">
           <article class="panel reach-panel">
             <div class="panel-heading">
               <div><p class="eyebrow">Reach gap</p><h2>Followers ≠ reachable fans</h2></div>
@@ -283,7 +296,7 @@
           </article>
         </section>
 
-        <section class="panel recommendations">
+        <section class="panel recommendations" data-page="overview">
           <div class="panel-heading">
             <div><p class="eyebrow">FanMesh intelligence</p><h2>Three moves worth making now</h2></div>
             <span class="updated">Updated just now</span>
@@ -293,7 +306,7 @@
           </div>
         </section>
 
-        <section class="panel audience-panel" id="audience">
+        <section class="panel audience-panel" id="audience" data-page="audience" hidden>
           <div class="panel-heading table-heading">
             <div><p class="eyebrow">Audience intelligence</p><h2>Your highest-intent fans</h2></div>
             <div class="table-actions">
@@ -310,7 +323,7 @@
           <div class="table-footer"><span id="audience-mode">Loading workspace records</span><button data-toast="Pagination will activate as your audience grows.">View all audience →</button></div>
         </section>
 
-        <section class="panel organic-pulse" id="organic-pulse">
+        <section class="panel organic-pulse" id="organic-pulse" data-page="organic" hidden>
           <div class="panel-heading">
             <div><p class="eyebrow">Organic Pulse</p><h2>Give an under-reached post another honest chance.</h2></div>
             <span class="status good" id="organic-pulse-status">Synced posts</span>
@@ -327,7 +340,7 @@
           <p class="organic-method" id="organic-method">Waiting for connected-platform post signals.</p>
         </section>
 
-        <section class="campaign-grid" id="campaign">
+        <section class="campaign-grid" id="campaign" data-page="outreach" hidden>
           <article class="panel campaign-builder">
             <div class="panel-heading">
               <div><p class="eyebrow">Lead Outreach</p><h2>Send this post to consented leads</h2></div>
@@ -372,6 +385,21 @@
           </article>
         </section>
 
+        <section class="panel developer-panel" id="developer" data-page="developer" hidden>
+          <div class="panel-heading">
+            <div><p class="eyebrow">FanMesh API</p><h2>Build on the audience layer</h2></div>
+            <a class="button primary" href="/api/v1/openapi.json" target="_blank" rel="noopener noreferrer">Open API schema ↗</a>
+          </div>
+          <p class="panel-copy">The browser receives safe summaries while authentication, provider tokens, contact details, consent checks, and delivery receipts remain server-side.</p>
+          <div class="developer-grid">
+            <article><span>Audience</span><strong>Private identity graph</strong><code>GET /api/v1/audience</code><p>Workspace-isolated fan records, explainable scoring, provenance, and consent state.</p></article>
+            <article><span>Connections</span><strong>Official provider catalog</strong><code>GET /api/v1/connections</code><p>Configured, connected, and available capabilities without returning OAuth credentials.</p></article>
+            <article><span>Organic</span><strong>Recovery opportunities</strong><code>GET /api/v1/organic/posts</code><p>Recent authorized post signals ranked with transparent opportunity components.</p></article>
+            <article><span>Outreach</span><strong>Preview before delivery</strong><code>POST /api/v1/outreach/preview</code><p>Consent, provenance, holdout, and frequency-cap counts without exposing contact fields.</p></article>
+          </div>
+          <div class="developer-boundary"><strong>API boundary</strong><p>FanMesh never exposes stored platform tokens or raw delivery credentials. Every mutating operation rechecks the signed-in workspace and the relevant authorization.</p></div>
+        </section>
+
         <footer>
           <span class="brand mini"><span class="brand-mark"><i></i><i></i><i></i></span>Fan<span>Mesh</span></span>
           <p>Creator-owned relationships. No fake engagement. No secret scraping.</p>
@@ -384,6 +412,6 @@
       </main>
     </div>
     <div class="toast" role="status" aria-live="polite"></div>
-    <script src="/app.js?v=0.11.0" type="module"></script>
+    <script src="/app.js?v=0.12.0" type="module"></script>
   </body>
 </html>

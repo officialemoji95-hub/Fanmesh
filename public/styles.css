@@ -58,6 +58,7 @@ main { margin-left: 244px; padding: 31px 38px 50px; max-width: 1550px; }
 .topbar { display: flex; align-items: center; gap: 28px; }
 .breadcrumb { margin: 0 0 7px; color: #9b9b9e; font-size: 11px; }
 .breadcrumb span { color: #57575c; }
+.page-description { max-width: 640px; margin: 7px 0 0; color: #85858b; font-size: 10px; line-height: 1.5; }
 h1, h2, h3 { margin: 0; font-family: "Avenir Next", "Segoe UI", sans-serif; letter-spacing: -.045em; }
 h1 { font-size: clamp(24px, 2.3vw, 34px); line-height: 1.2; }
 h2 { font-size: 18px; }
@@ -94,6 +95,17 @@ h2 { font-size: 18px; }
 .metric-card p b.positive { color: var(--green); }
 
 .social-launchpad { margin-top: 12px; }
+.connector-roadmap { margin-top: 16px; padding: 15px; border: 1px solid #ddd9ef; border-radius: 10px; background: linear-gradient(135deg, #f7f5ff, #fbfaf6 64%); }
+.roadmap-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.roadmap-heading .eyebrow { margin-bottom: 4px; }
+.roadmap-heading h3 { font-size: 14px; }
+.roadmap-grid { margin-top: 12px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.roadmap-card { padding: 12px; border: 1px solid #e6e3dc; border-radius: 8px; background: rgba(255,255,255,.74); }
+.roadmap-card.current { border-color: #b9d58a; box-shadow: inset 0 2px #b7df60; }
+.roadmap-card.next { border-color: #d8d0fa; }
+.roadmap-card span { color: #8174c7; font-size: 7px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.roadmap-card strong { display: block; margin-top: 5px; font-size: 10px; }
+.roadmap-card p { min-height: 0; margin: 6px 0 0; color: #7f7f86; font-size: 8px; line-height: 1.55; }
 .source-grid { margin-top: 16px; display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
 .source-card { position: relative; min-width: 0; padding: 13px; border: 1px solid #e8e6df; border-radius: 9px; background: #fbfaf6; }
 .source-card.is-connected { border-color: #bfe1d1; background: linear-gradient(150deg, #f5fcf8, #fbfaf6 65%); }
@@ -406,6 +418,19 @@ td { padding: 12px 20px; border-top: 1px solid #efede8; vertical-align: middle; 
 .activation-step b { color: var(--purple); }
 .activation-step p { margin: 0; color: #7d7d84; line-height: 1.45; }
 
+.developer-panel { margin-top: 12px; }
+.developer-panel .panel-heading .button { flex: 0 0 auto; }
+.developer-grid { margin-top: 17px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.developer-grid article { padding: 15px; border: 1px solid #e7e4dc; border-radius: 9px; background: #fbfaf7; }
+.developer-grid article > span { color: var(--purple); font-size: 7px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.developer-grid strong, .developer-grid code { display: block; }
+.developer-grid strong { margin-top: 5px; font-size: 11px; }
+.developer-grid code { width: fit-content; margin-top: 9px; padding: 6px 8px; color: #51499b; background: var(--purple-soft); border-radius: 6px; font-size: 8px; }
+.developer-grid p { margin: 8px 0 0; color: #808087; font-size: 8px; line-height: 1.55; }
+.developer-boundary { margin-top: 10px; padding: 12px 14px; display: flex; align-items: center; gap: 14px; border: 1px solid #cce2d7; border-radius: 9px; background: #f2faf6; }
+.developer-boundary strong { flex: 0 0 auto; color: #33745a; font-size: 9px; text-transform: uppercase; }
+.developer-boundary p { margin: 0; color: #68756f; font-size: 8px; line-height: 1.55; }
+
 main > footer { padding: 25px 3px 0; display: flex; align-items: center; gap: 17px; color: #929298; font-size: 9px; }
 main > footer .brand { color: var(--ink); font-size: 13px; }
 main > footer .brand > span:last-child { color: var(--lime); }
@@ -444,6 +469,7 @@ body.auth-open { overflow: hidden; }
   .recommendation { min-height: auto; }
   .recommendation footer { margin-top: 4px; }
   .source-grid { grid-template-columns: repeat(3, 1fr); }
+  .roadmap-grid { grid-template-columns: 1fr; }
   .top-actions .demo-pill { display: none; }
 }
 
@@ -457,7 +483,7 @@ body.auth-open { overflow: hidden; }
   .top-actions .secondary { display: none; }
   .top-actions .button { padding: 0 10px; font-size: 10px; }
   .notice { align-items: flex-start; }
-  .metrics, .dashboard-grid, .campaign-grid, .social-planner, .import-workbench, .meta-lead-import, .organic-post-list { grid-template-columns: 1fr; }
+  .metrics, .dashboard-grid, .campaign-grid, .social-planner, .import-workbench, .meta-lead-import, .organic-post-list, .developer-grid { grid-template-columns: 1fr; }
   .tiktok-performance-metrics, .platform-performance-metrics { grid-template-columns: repeat(2, 1fr); }
   .meta-ad-strip { grid-template-columns: repeat(2, 1fr); }
   .meta-ad-strip > span:last-child { grid-column: 1 / -1; }
@@ -478,6 +504,7 @@ body.auth-open { overflow: hidden; }
   h1 { font-size: 22px; }
   .breadcrumb { display: none; }
   .topbar { gap: 11px; }
+  .page-description { display: none; }
   .top-actions { margin-left: auto; }
   .notice p { line-height: 1.45; }
   .metrics { grid-template-columns: 1fr 1fr; gap: 8px; }

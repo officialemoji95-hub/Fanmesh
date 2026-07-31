@@ -11,6 +11,84 @@ let pendingIdentityImport = null;
 let organicPostRecords = [];
 let pendingOutreachPlan = null;
 
+const APP_ROUTES = Object.freeze({
+  overview: {
+    breadcrumb: "Overview",
+    title: "Your audience, finally visible.",
+    description: "See the relationship you control and the reach still trapped behind platform gates.",
+  },
+  audience: {
+    breadcrumb: "Audience",
+    title: "Know who is actually in your mesh.",
+    description: "Search consented fan records, identity signals, relationship strength, and recent activity.",
+  },
+  outreach: {
+    breadcrumb: "Outreach",
+    title: "Move a post through channels you control.",
+    description: "Preview a permissioned lead cohort, verify delivery readiness, then launch with measurable holdouts.",
+  },
+  organic: {
+    breadcrumb: "Organic Pulse",
+    title: "Find the posts worth another push.",
+    description: "Rank recent authorized post signals and save a clean organic baseline before adding direct or paid support.",
+  },
+  connections: {
+    breadcrumb: "Connections",
+    title: "Bring every authorized signal into one system.",
+    description: "Manage official OAuth connections, data downloads, ad-lead imports, and the provider rollout.",
+  },
+  developer: {
+    breadcrumb: "Developer",
+    title: "Build on the FanMesh audience layer.",
+    description: "Use the API contract without exposing platform tokens, private contact fields, or delivery credentials.",
+  },
+});
+
+const LEGACY_ROUTES = Object.freeze({
+  campaign: "outreach",
+  "organic-pulse": "organic",
+});
+
+function routeFromHash() {
+  const raw = window.location.hash.replace(/^#\/?/, "").split(/[/?]/)[0];
+  const route = LEGACY_ROUTES[raw] || raw;
+  return APP_ROUTES[route] ? route : "overview";
+}
+
+function renderRoute(route = routeFromHash(), { syncHash = false } = {}) {
+  const current = APP_ROUTES[route] ? route : "overview";
+  const copy = APP_ROUTES[current];
+  document.body.dataset.route = current;
+  document.querySelectorAll("[data-page]").forEach((section) => {
+    section.hidden = section.dataset.page !== current;
+  });
+  document.querySelectorAll(".nav [data-route]").forEach((link) => {
+    const active = link.dataset.route === current;
+    link.classList.toggle("active", active);
+    if (active) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  });
+  document.querySelector("#page-breadcrumb").textContent = copy.breadcrumb;
+  document.querySelector("#page-title").textContent = copy.title;
+  document.querySelector("#page-description").textContent = copy.description;
+  document.querySelector(".sidebar").classList.remove("open");
+  document.title = `${copy.breadcrumb} · FanMesh`;
+  if (syncHash && window.location.hash !== `#/${current}`) {
+    window.history.replaceState({}, "", `${window.location.pathname}${window.location.search}#/${current}`);
+  }
+}
+
+function navigateToRoute(route, targetId = "") {
+  const current = APP_ROUTES[route] ? route : "overview";
+  const nextHash = `#/${current}`;
+  if (window.location.hash === nextHash) renderRoute(current);
+  else window.location.hash = nextHash;
+  window.requestAnimationFrame(() => {
+    if (targetId) document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    else window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+}
+
 function showToast(message) {
   clearTimeout(toastTimer);
   toast.textContent = message;
@@ -696,8 +774,19 @@ document.addEventListener("click", async (event) => {
   const toastTrigger = event.target.closest("[data-toast]");
   if (toastTrigger) showToast(toastTrigger.dataset.toast);
 
+  const routeTrigger = event.target.closest("[data-route]");
+  if (routeTrigger) {
+    event.preventDefault();
+    navigateToRoute(routeTrigger.dataset.route);
+  }
+
   const scrollTrigger = event.target.closest("[data-scroll]");
-  if (scrollTrigger) document.getElementById(scrollTrigger.dataset.scroll)?.scrollIntoView({ behavior: "smooth" });
+  if (scrollTrigger) {
+    const target = scrollTrigger.dataset.scroll;
+    const route = { connections: "connections", audience: "audience", campaign: "outreach", "organic-pulse": "organic" }[target];
+    if (route) navigateToRoute(route, target);
+    else document.getElementById(target)?.scrollIntoView({ behavior: "smooth" });
+  }
 
   if (event.target.closest(".notice button")) event.target.closest(".notice").remove();
 
@@ -863,7 +952,7 @@ async function activateOrganicPost(postKey, button) {
     form.elements.message.value = `${post.title} is worth another look:`.slice(0, 280);
     form.elements.confirmedOwnedContent.checked = true;
     renderFanActivation(body.data);
-    document.querySelector("#campaign").scrollIntoView({ behavior: "smooth", block: "start" });
+    navigateToRoute("outreach", "campaign");
     showToast("Organic baseline and activation saved. Start with the native actions shown.");
   } catch (error) {
     showToast(error.message);
@@ -1278,4 +1367,6 @@ document.querySelector("#signout-button").addEventListener("click", async () => 
   showAuthGate(true);
 });
 
+window.addEventListener("hashchange", () => renderRoute(routeFromHash()));
+renderRoute(routeFromHash(), { syncHash: true });
 bootstrapAccount();

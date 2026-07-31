@@ -118,11 +118,13 @@ The Connections screen can then run a manual sync or disconnect. Disconnecting e
 
 ## Next connection work
 
-After live developer apps have authorized successfully, the next adapters are:
+Provider depth is prioritized over a row of shallow login buttons. Meta is completed end to end first, Snapchat Business is the next full adapter, and the remaining providers reuse the proven connection contract.
 
-- signed Meta Lead Ads webhook delivery with replay protection and form-specific consent-field rules;
-- scheduled token refresh and background sync jobs;
-- TikTok for Business advertising authorization;
-- X Ads OAuth 1.0a after Ads API approval;
-- Snapchat Public Profile metrics after allowlisting;
-- platform-native publishing only for products/scopes explicitly approved for the app.
+After live developer apps have authorized successfully, the adapter order is:
+
+1. signed Meta Lead Ads webhook delivery with replay protection, form-specific consent-field rules, scheduled token refresh, and background sync jobs;
+2. Snapchat Business organizations, ad accounts, campaign reporting, and Snapchat Public Profile metrics after allowlisting;
+3. TikTok for Business advertising authorization;
+4. Google Ads and YouTube campaign reporting through their approved developer products;
+5. X Ads OAuth 1.0a after Ads API approval and Threads expansion through its separate Meta developer product;
+6. platform-native publishing only for products and scopes explicitly approved for the app.

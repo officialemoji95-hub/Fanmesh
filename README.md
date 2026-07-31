@@ -6,7 +6,7 @@ This repository contains a deployable proof of concept. Without Supabase configu
 
 ## What works now
 
-- Responsive creator dashboard
+- Responsive routed workspace with focused Overview, Audience, Outreach, Organic Pulse, Connections, and Developer views
 - Supabase email/password accounts with server-managed HTTP-only sessions
 - Private creator workspaces with PostgreSQL row-level security
 - Live workspace dashboard mode that starts at zero instead of showing invented audience data
@@ -91,7 +91,7 @@ Every score includes its component points and strongest signals. Sensitive trait
 
 ## The production direction
 
-Accounts, private workspaces, consented lead imports, official platform-download ingestion, Organic Pulse, source-filtered lead outreach, and the multi-provider OAuth foundation are implemented. Meta measures authorized Instagram post health; automatic Instant Form retrieval remains available only when Meta grants the required app and Page permissions. Creators without Meta business verification can import authorized consent exports. Email and SMS launch when Resend and Twilio credentials are configured. See [docs/LEAD-OUTREACH.md](docs/LEAD-OUTREACH.md), [docs/ORGANIC-PULSE.md](docs/ORGANIC-PULSE.md), [docs/ACTIVATION.md](docs/ACTIVATION.md), [docs/OAUTH-CONNECTIONS.md](docs/OAUTH-CONNECTIONS.md), [docs/SOCIAL-PHASE-1.md](docs/SOCIAL-PHASE-1.md), [docs/AUDIENCE-IMPORT.md](docs/AUDIENCE-IMPORT.md), [docs/AUTH-AND-SUPABASE.md](docs/AUTH-AND-SUPABASE.md), [docs/PRODUCT.md](docs/PRODUCT.md), [docs/API.md](docs/API.md), and [docs/SECURITY.md](docs/SECURITY.md).
+Accounts, private workspaces, consented lead imports, official platform-download ingestion, Organic Pulse, source-filtered lead outreach, routed workspace views, and the multi-provider OAuth foundation are implemented. Meta is the first end-to-end provider lane; Snapchat Business follows after the shared connection, sync, consent, health, and attribution contract is proven. Meta measures authorized Instagram post health; automatic Instant Form retrieval remains available only when Meta grants the required app and Page permissions. Creators without Meta business verification can import authorized consent exports. Email and SMS launch when Resend and Twilio credentials are configured. See [docs/LEAD-OUTREACH.md](docs/LEAD-OUTREACH.md), [docs/ORGANIC-PULSE.md](docs/ORGANIC-PULSE.md), [docs/ACTIVATION.md](docs/ACTIVATION.md), [docs/OAUTH-CONNECTIONS.md](docs/OAUTH-CONNECTIONS.md), [docs/SOCIAL-PHASE-1.md](docs/SOCIAL-PHASE-1.md), [docs/AUDIENCE-IMPORT.md](docs/AUDIENCE-IMPORT.md), [docs/AUTH-AND-SUPABASE.md](docs/AUTH-AND-SUPABASE.md), [docs/PRODUCT.md](docs/PRODUCT.md), [docs/API.md](docs/API.md), and [docs/SECURITY.md](docs/SECURITY.md).
 
 ## Non-goals
 
