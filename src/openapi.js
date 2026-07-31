@@ -2,7 +2,7 @@ export const openApiDocument = {
   openapi: "3.1.0",
   info: {
     title: "FanMesh API",
-    version: "0.11.0",
+    version: "0.13.0",
     description: "Audience intelligence API for consented fan relationships.",
   },
   servers: [{ url: "/api/v1" }],
@@ -125,6 +125,34 @@ export const openApiDocument = {
         security: [{ creatorSession: [] }],
         requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["formIds", "consentChannels", "confirmedAuthorized", "confirmedConsent"] } } } },
         responses: { 201: { description: "Meta lead import committed with consent provenance" }, 400: { description: "No valid consented records" }, 403: { description: "Meta lead permission or asset access missing" } },
+      },
+    },
+    "/oauth/snapchat/leads/webhooks": {
+      post: {
+        summary: "Create verified live-lead webhooks for selected authorized Snapchat Lead Generation Forms",
+        security: [{ creatorSession: [] }],
+        requestBody: { required: true, content: { "application/json": { schema: {
+          type: "object",
+          required: ["formIds", "consentChannels", "confirmedAuthorized", "confirmedConsent"],
+          properties: {
+            formIds: { type: "array", minItems: 1, maxItems: 10, items: { type: "string" } },
+            consentChannels: { type: "array", minItems: 1, items: { type: "string", enum: ["email", "sms"] } },
+            confirmedAuthorized: { type: "boolean", const: true },
+            confirmedConsent: { type: "boolean", const: true },
+          },
+        } } } },
+        responses: { 201: { description: "Snapchat live-lead webhook enabled" }, 400: { description: "Form, channel, or consent confirmation missing" }, 403: { description: "Snapchat asset access missing" } },
+      },
+    },
+    "/webhooks/snapchat/leads/{pathKey}": {
+      post: {
+        summary: "Receive an HMAC-verified Snapchat lead submission and persist its consented contact",
+        parameters: [
+          { name: "pathKey", in: "path", required: true, schema: { type: "string" } },
+          { name: "Signature", in: "header", required: true, schema: { type: "string" } },
+          { name: "t", in: "header", required: true, schema: { type: "string" } },
+        ],
+        responses: { 202: { description: "Lead accepted or duplicate acknowledged without returning contact fields" }, 401: { description: "Signature invalid or expired" }, 403: { description: "Form or ad-account mismatch" } },
       },
     },
     "/score": {
