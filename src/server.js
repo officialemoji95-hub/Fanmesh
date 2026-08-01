@@ -20,7 +20,7 @@ import {
   verifySnapchatWebhookSignature,
 } from "./snapchat.js";
 
-const APP_VERSION = "0.16.1";
+const APP_VERSION = "0.16.2";
 const port = Number(process.env.PORT || 3000);
 const publicDirectory = fileURLToPath(new URL("../public", import.meta.url));
 const maxBodyBytes = 2 * 1024 * 1024;
@@ -337,10 +337,15 @@ export function createRequestHandler({
     const oauthRoute = pathname.match(/^\/api\/v1\/oauth\/([a-z_]+)\/(start|callback|sync|disconnect)$/);
     if (oauthRoute) {
       const [, provider, action] = oauthRoute;
-      if (request.method === "GET" && action === "start") {
+      if (["GET", "POST"].includes(request.method) && action === "start") {
         try {
           const session = await authenticatedSession(request);
           const result = await oauthService.begin(provider, session.data);
+          if (request.method === "POST") {
+            return sendJson(response, 200, {
+              data: { provider, redirectUrl: result.redirectUrl },
+            }, cookieHeaders([...session.cookies, ...result.cookies]));
+          }
           return sendRedirect(response, result.redirectUrl, [...session.cookies, ...result.cookies]);
         } catch (error) {
           return sendError(response, error);
