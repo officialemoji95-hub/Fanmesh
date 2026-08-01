@@ -34,7 +34,7 @@ async function dispatch({ method = "GET", url = "/", body = "", headers = {}, ha
 test("health endpoint reports an operational service", async () => {
   const response = await dispatch({ url: "/api/health" });
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.16.4", database: "demo" });
+  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.16.5", database: "demo" });
 });
 
 test("public legal pages explain FanMesh data and platform rules", async () => {
@@ -571,7 +571,7 @@ test("OAuth start can return a signed JSON handoff without navigating through an
       async begin(provider, session) {
         assert.equal(provider, "threads");
         assert.equal(session.user.id, "user-1");
-        return { redirectUrl: "https://www.threads.com/oauth/authorize?state=test", cookies: ["oauth=state"] };
+        return { redirectUrl: "https://threads.com/oauth/authorize?state=test", cookies: ["oauth=state"] };
       },
     },
   });
@@ -580,7 +580,7 @@ test("OAuth start can return a signed JSON handoff without navigating through an
   assert.deepEqual(response.headers["set-cookie"], ["session=refreshed", "oauth=state"]);
   assert.deepEqual(response.json().data, {
     provider: "threads",
-    redirectUrl: "https://www.threads.com/oauth/authorize?state=test",
+    redirectUrl: "https://threads.com/oauth/authorize?state=test",
   });
 });
 
