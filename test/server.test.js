@@ -34,7 +34,7 @@ async function dispatch({ method = "GET", url = "/", body = "", headers = {}, ha
 test("health endpoint reports an operational service", async () => {
   const response = await dispatch({ url: "/api/health" });
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.16.6", database: "demo" });
+  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.16.7", database: "demo" });
 });
 
 test("public legal pages explain FanMesh data and platform rules", async () => {
@@ -582,6 +582,46 @@ test("OAuth start can return a signed JSON handoff without navigating through an
     provider: "threads",
     redirectUrl: "https://threads.com/oauth/authorize?state=test",
   });
+});
+
+test("Threads compliance callbacks are public, form-encoded, and return Meta's deletion contract", async () => {
+  const calls = [];
+  const handler = createRequestHandler({
+    oauthService: {
+      async handleThreadsCompliance(action, input) {
+        calls.push({ action, input });
+        return action === "delete"
+          ? { url: "https://fanmesh.example/api/v1/oauth/threads/delete/status?code=confirmation-code-12345", confirmation_code: "confirmation-code-12345" }
+          : { success: true, revoked: 1 };
+      },
+    },
+  });
+  const deauthorize = await dispatch({
+    method: "POST",
+    url: "/api/v1/oauth/threads/deauthorize",
+    body: "signed_request=signed.deauthorize",
+    handler,
+  });
+  const deletion = await dispatch({
+    method: "POST",
+    url: "/api/v1/oauth/threads/delete",
+    body: "signed_request=signed.delete",
+    handler,
+  });
+  const status = await dispatch({
+    url: "/api/v1/oauth/threads/delete/status?code=confirmation-code-12345",
+    handler,
+  });
+
+  assert.equal(deauthorize.statusCode, 200);
+  assert.deepEqual(deauthorize.json(), { success: true, revoked: 1 });
+  assert.equal(deletion.statusCode, 200);
+  assert.equal(deletion.json().confirmation_code, "confirmation-code-12345");
+  assert.deepEqual(status.json(), { status: "completed", confirmation_code: "confirmation-code-12345" });
+  assert.deepEqual(calls, [
+    { action: "deauthorize", input: { signed_request: "signed.deauthorize" } },
+    { action: "delete", input: { signed_request: "signed.delete" } },
+  ]);
 });
 
 test("lead preview endpoint returns consent validation results", async () => {
