@@ -2,7 +2,7 @@ export const openApiDocument = {
   openapi: "3.1.0",
   info: {
     title: "FanMesh API",
-    version: "0.15.0",
+    version: "0.16.0",
     description: "Audience intelligence API for consented fan relationships.",
   },
   servers: [{ url: "/api/v1" }],
@@ -75,7 +75,7 @@ export const openApiDocument = {
       get: {
         summary: "Start an official platform OAuth authorization",
         security: [{ creatorSession: [] }],
-        parameters: [{ name: "provider", in: "path", required: true, schema: { type: "string", enum: ["meta", "tiktok", "snapchat", "x", "threads"] } }],
+        parameters: [{ name: "provider", in: "path", required: true, schema: { type: "string", enum: ["meta", "tiktok", "snapchat", "youtube", "x", "threads"] } }],
         responses: { 302: { description: "Redirect to the platform consent screen" }, 401: { description: "Sign-in required" }, 503: { description: "Provider developer app not configured" } },
       },
     },
