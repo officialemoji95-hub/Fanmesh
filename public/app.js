@@ -408,7 +408,7 @@ function safeInstagramUrl(value) {
 }
 
 function safePlatformUrl(value, platform) {
-  const allowed = platform === "youtube" ? ["youtube.com", "youtu.be"] : platform === "threads" ? ["threads.net"] : ["x.com"];
+  const allowed = platform === "youtube" ? ["youtube.com", "youtu.be"] : platform === "threads" ? ["threads.com", "threads.net"] : ["x.com"];
   try {
     const url = new URL(String(value || ""));
     if (url.protocol !== "https:") return "";
