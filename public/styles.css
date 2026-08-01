@@ -401,6 +401,9 @@ td { padding: 12px 20px; border-top: 1px solid #efede8; vertical-align: middle; 
 .organic-platform { padding: 4px 7px; color: #fff; background: #242529; border-radius: 999px; font-size: 7px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .organic-platform.instagram { background: linear-gradient(110deg, #7b45e9, #e34270); }
 .organic-platform.tiktok { background: #16171a; }
+.organic-platform.youtube { background: #e6322c; }
+.organic-platform.x { background: #17181b; }
+.organic-platform.threads { background: #6f54dc; }
 .organic-score { color: #818188; font-size: 8px; }
 .organic-score b { color: var(--purple); font-size: 12px; }
 .organic-title { overflow: hidden; color: var(--ink); font-size: 12px; font-weight: 800; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
@@ -418,6 +421,31 @@ td { padding: 12px 20px; border-top: 1px solid #efede8; vertical-align: middle; 
 .organic-baseline strong, .organic-baseline span { display: block; }
 .organic-baseline strong { margin: 3px 0; font-size: 14px; }
 .organic-baseline span, .organic-baseline p { margin: 0; color: #76707f; font-size: 8px; line-height: 1.45; }
+.reach-lab { margin-top: 12px; }
+.reach-lab-summary { margin: 14px 0 10px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.reach-lab-summary span { padding: 10px 12px; display: grid; gap: 3px; background: #f8f7f3; border: 1px solid #ebe9e3; border-radius: 7px; }
+.reach-lab-summary small { color: #8f8f95; font-size: 7px; letter-spacing: .08em; text-transform: uppercase; }
+.reach-lab-summary strong { font-size: 15px; }
+.reach-lab-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.reach-card { padding: 14px; display: grid; align-content: start; gap: 10px; border: 1px solid #e6e3dd; border-radius: 10px; background: #fff; }
+.reach-card.high { border-color: #d9ceff; box-shadow: inset 3px 0 0 var(--purple); }
+.reach-card.medium { box-shadow: inset 3px 0 0 #e2b152; }
+.reach-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.reach-card h3 { margin: 0; overflow: hidden; font-size: 13px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.reach-state { padding: 4px 7px; color: #686870; background: #efeee9; border-radius: 999px; font-size: 7px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+.reach-state.recovery_gap { color: #6f46c9; background: #eee8ff; }
+.reach-state.cross_platform { color: #146a45; background: #e4f6ed; }
+.reach-evidence { margin: -5px 0 0; color: #85858c; font-size: 8px; line-height: 1.5; }
+.reach-platforms { display: grid; gap: 5px; }
+.reach-platform-row { padding: 8px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; color: inherit; background: #f8f7f3; border: 1px solid #efede7; border-radius: 7px; }
+.reach-platform-row > span:nth-child(2) { min-width: 0; display: grid; gap: 2px; }
+.reach-platform-row small { overflow: hidden; color: #929299; font-size: 6px; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.reach-platform-row strong { font-size: 9px; }
+.reach-platform-row > b { color: var(--purple); font-size: 10px; white-space: nowrap; }
+.reach-plan { padding: 10px; background: #f4f1ff; border: 1px solid #e5defb; border-radius: 8px; }
+.reach-plan > strong { font-size: 9px; }
+.reach-plan ol { margin: 6px 0 0; padding-left: 16px; color: #6f6979; font-size: 8px; line-height: 1.5; }
+.reach-plan li + li { margin-top: 4px; }
 .native-actions { padding: 10px 11px; background: #fbfaf7; border: 1px solid #e9e6df; border-radius: 7px; font-size: 9px; }
 .native-actions ol { margin: 7px 0 0; padding-left: 18px; color: #6f6f76; }
 .native-actions li { margin-top: 5px; line-height: 1.45; }
@@ -543,7 +571,7 @@ body.auth-open { overflow: hidden; }
   .top-actions .secondary { display: none; }
   .top-actions .button { padding: 0 10px; font-size: 10px; }
   .notice { align-items: flex-start; }
-  .metrics, .dashboard-grid, .campaign-grid, .social-planner, .import-workbench, .meta-lead-import, .snapchat-lead-capture, .organic-post-list, .developer-grid { grid-template-columns: 1fr; }
+  .metrics, .dashboard-grid, .campaign-grid, .social-planner, .import-workbench, .meta-lead-import, .snapchat-lead-capture, .organic-post-list, .reach-lab-list, .developer-grid { grid-template-columns: 1fr; }
   .tiktok-performance-metrics, .platform-performance-metrics { grid-template-columns: repeat(2, 1fr); }
   .meta-ad-strip { grid-template-columns: repeat(2, 1fr); }
   .meta-ad-strip > span:last-child { grid-column: 1 / -1; }
@@ -585,6 +613,9 @@ body.auth-open { overflow: hidden; }
   .activation-step p { grid-column: 2; }
   .organic-metrics { grid-template-columns: 1fr 1fr; }
   .organic-baseline { grid-template-columns: 1fr; }
+  .reach-lab-summary { grid-template-columns: 1fr 1fr; }
+  .reach-platform-row { grid-template-columns: auto minmax(0, 1fr); }
+  .reach-platform-row > b { grid-column: 2; }
   .sequence-step { grid-template-columns: 45px 1fr; }
   .sequence-step p { grid-column: 1 / -1; margin: 2px 0 0; }
   .social-step { grid-template-columns: 23px 1fr; }
