@@ -8,7 +8,7 @@ import { createWorkspaceStore, DatabaseError } from "./database.js";
 import { audienceSnapshot, demoFans } from "./demo-data.js";
 import { buildInsights, recommendCampaign } from "./insights.js";
 import { createOAuthService } from "./oauth.js";
-import { buildOrganicQueue, prepareOrganicPulse } from "./organic.js";
+import { buildContentMesh, buildOrganicQueue, prepareOrganicPulse } from "./organic.js";
 import { openApiDocument } from "./openapi.js";
 import { createOutreachService, normalizeOutreachInput, publicOutreachPlan, selectOutreachCohort } from "./outreach.js";
 import { getConnectionCatalog, planSocialExperiment, previewLeadImport, previewPlatformIdentityImport } from "./social.js";
@@ -20,7 +20,7 @@ import {
   verifySnapchatWebhookSignature,
 } from "./snapchat.js";
 
-const APP_VERSION = "0.16.7";
+const APP_VERSION = "0.17.0";
 const port = Number(process.env.PORT || 3000);
 const publicDirectory = fileURLToPath(new URL("../public", import.meta.url));
 const maxBodyBytes = 2 * 1024 * 1024;
@@ -170,6 +170,7 @@ export function createRequestHandler({
           fans,
           connections: getConnectionCatalog({}, oauthService.catalog({}, { providerWebhookSchemaReady: false })),
           organic: buildOrganicQueue({}),
+          contentMesh: buildContentMesh({}),
         },
         meta: { demo: true, authenticated: false, count: fans.length },
         cookies: [],
@@ -183,6 +184,7 @@ export function createRequestHandler({
     );
     const fans = scoreAudience(state.fans);
     const organic = buildOrganicQueue(state.connectionStatuses);
+    const contentMesh = buildContentMesh(state.connectionStatuses);
     return {
       data: {
         workspace: state.workspace,
@@ -193,6 +195,7 @@ export function createRequestHandler({
           oauthService.catalog(state.connectionStatuses, state.readiness),
         ),
         organic,
+        contentMesh,
       },
       meta: { demo: false, authenticated: true, count: fans.length },
       cookies: session.cookies,
@@ -577,10 +580,26 @@ export function createRequestHandler({
       }
     }
 
+    if (request.method === "GET" && pathname === "/api/v1/content-mesh") {
+      try {
+        if (!authService.config.configured) {
+          return sendJson(response, 200, { data: buildContentMesh({}), meta: { demo: true, synced: false, paidIncluded: false } });
+        }
+        const session = await authenticatedSession(request);
+        const state = await workspaceStore.getDashboard(session.data.user, session.data.accessToken, 1);
+        return sendJson(response, 200, {
+          data: buildContentMesh(state.connectionStatuses),
+          meta: { demo: false, synced: true, paidIncluded: false },
+        }, cookieHeaders(session.cookies));
+      } catch (error) {
+        return sendError(response, error);
+      }
+    }
+
     if (request.method === "POST" && pathname === "/api/v1/organic/activate") {
       try {
         if (!authService.config.configured) {
-          const error = new Error("Connect and sync Instagram or TikTok before starting an organic pulse");
+          const error = new Error("Connect and sync an authorized creator platform before starting an organic pulse");
           error.statusCode = 409;
           throw error;
         }

@@ -242,10 +242,20 @@ export const openApiDocument = {
     },
     "/organic/posts": {
       get: {
-        summary: "Rank recent authorized Instagram and TikTok posts for an organic follow-up",
+        summary: "Rank recent authorized Instagram, TikTok, YouTube, X, and Threads posts for an organic follow-up",
         security: [{ creatorSession: [] }],
         responses: {
           200: { description: "Recent posts with explainable opportunity components and current organic baselines" },
+          401: { description: "Sign-in required" },
+        },
+      },
+    },
+    "/content-mesh": {
+      get: {
+        summary: "Match creator-owned content across connected platforms and explain organic performance gaps",
+        security: [{ creatorSession: [] }],
+        responses: {
+          200: { description: "Cross-platform content groups, per-platform benchmark indexes, and native recovery recommendations with paid delivery excluded" },
           401: { description: "Sign-in required" },
         },
       },

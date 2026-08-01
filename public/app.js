@@ -30,7 +30,12 @@ const APP_ROUTES = Object.freeze({
   organic: {
     breadcrumb: "Organic Pulse",
     title: "Find the posts worth another push.",
-    description: "Rank recent authorized post signals and save a clean organic baseline before adding direct or paid support.",
+    description: "Rank recent authorized post signals across every connected creator platform and save a clean organic baseline.",
+  },
+  "reach-lab": {
+    breadcrumb: "Reach Lab",
+    title: "See where the same content wins—or disappears.",
+    description: "Match your content across platforms, find honest organic performance gaps, and choose the next native move.",
   },
   connections: {
     breadcrumb: "Connections",
@@ -813,9 +818,9 @@ function renderOrganicPulse(organic = {}) {
     <span><small>Platforms</small><strong>${numberFormatter.format((details.platforms || []).length)}</strong></span>`;
   status.className = `status ${organicPostRecords.length ? "good" : "warning"}`;
   status.textContent = organicPostRecords.length ? `${organicPostRecords.length} recent posts` : "Sync needed";
-  method.textContent = organic.methodology || "Sync Instagram or TikTok to compare recent organic post performance.";
+  method.textContent = organic.methodology || "Sync a supported creator platform to compare recent organic post performance.";
   if (!organicPostRecords.length) {
-    list.innerHTML = `<article class="organic-empty"><strong>No eligible recent posts yet</strong><p>Connect or sync Instagram and TikTok above. FanMesh needs a public post URL and authorized performance metrics before it can capture an organic baseline.</p><button class="button secondary" type="button" data-scroll="connections">Review connections ↑</button></article>`;
+    list.innerHTML = `<article class="organic-empty"><strong>No eligible recent posts yet</strong><p>Connect or sync Instagram, TikTok, YouTube, X, or Threads. FanMesh needs a public post URL and authorized performance metrics before it can capture an organic baseline.</p><button class="button secondary" type="button" data-scroll="connections">Review connections ↑</button></article>`;
     return;
   }
   list.innerHTML = organicPostRecords.slice(0, 6).map((post) => `
@@ -829,12 +834,51 @@ function renderOrganicPulse(organic = {}) {
       <div class="organic-metrics">
         <span><small>${escapeHtml(post.reachMetric)}</small><strong>${numberFormatter.format(post.currentReach)}</strong></span>
         <span><small>${escapeHtml(post.benchmarkLabel)}</small><strong>${numberFormatter.format(post.benchmark)}</strong></span>
-        <span><small>Follower coverage</small><strong>${percent(post.followerCoverageRate)}</strong></span>
+        <span><small>Follower coverage</small><strong>${post.followersAvailable ? percent(post.followerCoverageRate) : "Not provided"}</strong></span>
         <span><small>Interactions</small><strong>${numberFormatter.format(post.interactions)}</strong></span>
       </div>
       <p class="organic-reason">${escapeHtml(post.reasons?.join(" · ") || "Keep measuring this post organically.")}</p>
       <button class="button primary organic-activate" type="button" data-organic-activate="${escapeHtml(post.key)}">Prepare organic pulse ↗</button>
     </article>`).join("");
+}
+
+function renderReachLab(mesh = {}) {
+  const list = document.querySelector("#reach-lab-list");
+  const summary = document.querySelector("#reach-lab-summary");
+  const status = document.querySelector("#reach-lab-status");
+  const method = document.querySelector("#reach-lab-method");
+  const groups = Array.isArray(mesh.content) ? mesh.content : [];
+  const details = mesh.summary || {};
+  summary.innerHTML = `
+    <span><small>Organic posts</small><strong>${numberFormatter.format(details.postsAnalyzed || 0)}</strong></span>
+    <span><small>Content ideas</small><strong>${numberFormatter.format(details.contentGroups || 0)}</strong></span>
+    <span><small>Cross-platform matches</small><strong>${numberFormatter.format(details.crossPlatformGroups || 0)}</strong></span>
+    <span><small>Recovery gaps</small><strong>${numberFormatter.format(details.recoveryGaps || 0)}</strong></span>`;
+  status.className = `status ${groups.length ? "good" : "warning"}`;
+  status.textContent = groups.length ? `${numberFormatter.format(groups.length)} ideas mapped` : "Sync needed";
+  method.textContent = mesh.methodology || "Waiting for authorized organic post signals from connected platforms.";
+  if (!groups.length) {
+    list.innerHTML = `<article class="organic-empty"><strong>No content to mesh yet</strong><p>Sync at least one creator platform. Cross-platform comparison begins automatically when matching titles or captions appear on two connected platforms.</p><button class="button secondary" type="button" data-route="connections">Open connections ↗</button></article>`;
+    return;
+  }
+  list.innerHTML = groups.slice(0, 12).map((item) => {
+    const comparisons = (item.posts || []).map((post) => `
+      <a class="reach-platform-row" href="${escapeHtml(post.url)}" target="_blank" rel="noopener noreferrer">
+        <span class="organic-platform ${escapeHtml(post.platform)}">${escapeHtml(post.platform)}</span>
+        <span><small>${escapeHtml(post.reachMetric)} / own benchmark</small><strong>${numberFormatter.format(post.currentReach)} / ${numberFormatter.format(post.benchmark)}</strong></span>
+        <b>${post.performanceIndex === null ? "Building baseline" : `${numberFormatter.format(post.performanceIndex)}%`}</b>
+      </a>`).join("");
+    return `<article class="reach-card ${escapeHtml(item.priority)}">
+      <div class="reach-card-heading">
+        <span class="reach-state ${escapeHtml(item.status)}">${escapeHtml(item.status.replaceAll("_", " "))}</span>
+        <span class="organic-score"><b>${numberFormatter.format(item.opportunityScore)}</b>/100 opportunity</span>
+      </div>
+      <h3>${escapeHtml(item.title)}</h3>
+      <p class="reach-evidence">${escapeHtml(item.matchEvidence)}</p>
+      <div class="reach-platforms">${comparisons}</div>
+      <div class="reach-plan"><strong>Best next move</strong><ol>${(item.recommendations || []).map((recommendation) => `<li>${escapeHtml(recommendation)}</li>`).join("")}</ol></div>
+    </article>`;
+  }).join("");
 }
 
 function renderConnections(catalog) {
@@ -848,7 +892,7 @@ function renderConnections(catalog) {
       <p>${escapeHtml(source.caveat || "Import only records you are authorized to use.")}</p>
       <div class="source-tags">${source.capabilities.slice(0, 2).map((capability) => `<span>${escapeHtml(capabilityLabel(capability))}</span>`).join("")}</div>
       ${source.status === "connected" ? `
-        <div class="connection-summary"><strong>${source.platform === "snapchat" ? `${numberFormatter.format(source.account?.campaignCount || 0)} campaigns` : source.platform === "youtube" && source.account?.hiddenSubscribers ? "Subscribers private" : `${numberFormatter.format(source.account?.followers || 0)} followers`}</strong><span>${source.platform === "tiktok" ? `${numberFormatter.format(source.account?.recentVideoCount || 0)} posts · ${numberFormatter.format(source.account?.averageViews || 0)} avg views` : source.platform === "youtube" ? `${numberFormatter.format(source.account?.videoCount || 0)} channel videos · ${numberFormatter.format(source.account?.analyticsViews28d || 0)} views in 28d` : source.platform === "x" || source.platform === "threads" ? `${numberFormatter.format(source.account?.recentPostCount || 0)} recent posts · ${numberFormatter.format(source.account?.recentPostImpressions || 0)} ${source.platform === "threads" ? "views" : "impressions"}` : source.platform === "meta" ? `${numberFormatter.format(source.account?.pageCount || 0)} Pages · ${numberFormatter.format(source.account?.instagramAccountCount || 0)} Instagram` : source.platform === "snapchat" ? `${numberFormatter.format(source.account?.adAccounts || 0)} ad accounts · ${numberFormatter.format(source.account?.adCount || 0)} ads · ${numberFormatter.format(source.account?.leadFormCount || 0)} lead forms` : `${numberFormatter.format(source.account?.adAccounts || 0)} ad accounts`}</span></div>
+        <div class="connection-summary"><strong>${source.platform === "snapchat" ? `${numberFormatter.format(source.account?.campaignCount || 0)} campaigns` : source.platform === "youtube" && source.account?.hiddenSubscribers ? "Subscribers private" : source.platform === "threads" ? "Followers not provided" : `${numberFormatter.format(source.account?.followers || 0)} followers`}</strong><span>${source.platform === "tiktok" ? `${numberFormatter.format(source.account?.recentVideoCount || 0)} posts · ${numberFormatter.format(source.account?.averageViews || 0)} avg views` : source.platform === "youtube" ? `${numberFormatter.format(source.account?.videoCount || 0)} channel videos · ${numberFormatter.format(source.account?.analyticsViews28d || 0)} views in 28d` : source.platform === "x" || source.platform === "threads" ? `${numberFormatter.format(source.account?.recentPostCount || 0)} recent posts · ${numberFormatter.format(source.account?.recentPostImpressions || 0)} ${source.platform === "threads" ? "views" : "impressions"}` : source.platform === "meta" ? `${numberFormatter.format(source.account?.pageCount || 0)} Pages · ${numberFormatter.format(source.account?.instagramAccountCount || 0)} Instagram` : source.platform === "snapchat" ? `${numberFormatter.format(source.account?.adAccounts || 0)} ad accounts · ${numberFormatter.format(source.account?.adCount || 0)} ads · ${numberFormatter.format(source.account?.leadFormCount || 0)} lead forms` : `${numberFormatter.format(source.account?.adAccounts || 0)} ad accounts`}</span></div>
         <div class="connection-actions"><button class="connection-button" type="button" data-connection-sync="${escapeHtml(source.platform)}">Sync now</button><button class="connection-link" type="button" data-connection-disconnect="${escapeHtml(source.platform)}">Disconnect</button></div>
       ` : source.configured && source.connectUrl ? `
         <button class="connection-button" type="button" data-connection-connect="${escapeHtml(source.platform)}">Connect ${escapeHtml(source.label)} ↗</button>
@@ -1037,7 +1081,7 @@ async function loadDashboard() {
     const response = await fetch("/api/v1/dashboard?limit=20");
     const body = await response.json();
     if (!response.ok) throw new Error(body.error?.message || "Dashboard API unavailable");
-    const { insights, fans, connections, organic, workspace } = body.data;
+    const { insights, fans, connections, organic, contentMesh, workspace } = body.data;
     const meta = body.meta;
     const { snapshot } = insights;
     fanRecords = fans;
@@ -1045,6 +1089,7 @@ async function loadDashboard() {
     renderRecommendations(insights.recommendations);
     renderConnections(connections);
     renderOrganicPulse(organic);
+    renderReachLab(contentMesh);
     document.querySelector("#cross-platform-count").textContent = numberFormatter.format(
       fanRecords.filter((fan) => fan.channels.length > 1).length,
     );

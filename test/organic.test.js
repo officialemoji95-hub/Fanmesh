@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildOrganicQueue, prepareOrganicPulse } from "../src/organic.js";
+import { buildContentMesh, buildOrganicQueue, prepareOrganicPulse } from "../src/organic.js";
 
 const statuses = {
   meta: {
@@ -101,4 +101,96 @@ test("organic queue ignores disconnected accounts and posts without public links
     },
   }, { now: "2026-07-30T12:00:00.000Z" });
   assert.equal(queue.posts.length, 0);
+});
+
+test("content mesh matches the same idea across platforms and compares own-platform baselines", () => {
+  const mesh = buildContentMesh({
+    tiktok: {
+      status: "connected",
+      account: {
+        username: "artist",
+        followers: 100000,
+        medianViews: 1000,
+        recentVideos: [{
+          id: "tt-midnight",
+          title: "Midnight Drive official video out now",
+          shareUrl: "https://www.tiktok.com/@artist/video/midnight",
+          createdAt: "2026-07-29T12:00:00.000Z",
+          views: 127,
+          likes: 10,
+          comments: 2,
+          shares: 1,
+        }],
+      },
+    },
+    youtube: {
+      status: "connected",
+      account: {
+        name: "Artist",
+        followers: 5000,
+        medianViews: 100,
+        recentVideos: [{
+          id: "yt-midnight",
+          title: "Midnight Drive official music video",
+          shareUrl: "https://www.youtube.com/watch?v=midnight",
+          createdAt: "2026-07-28T12:00:00.000Z",
+          views: 300,
+          likes: 30,
+          comments: 5,
+        }],
+      },
+    },
+    threads: {
+      status: "connected",
+      account: {
+        username: "artist",
+        averageViews: 500,
+        recentPosts: [{
+          id: "th-midnight",
+          text: "Midnight Drive official video is out now",
+          permalink: "https://www.threads.com/@artist/post/midnight",
+          createdAt: "2026-07-29T15:00:00.000Z",
+          impressions: 50,
+          likes: 4,
+          replies: 1,
+        }],
+      },
+    },
+  }, { now: "2026-07-30T12:00:00.000Z" });
+
+  assert.equal(mesh.summary.postsAnalyzed, 3);
+  assert.equal(mesh.summary.contentGroups, 1);
+  assert.equal(mesh.summary.crossPlatformGroups, 1);
+  assert.equal(mesh.summary.recoveryGaps, 1);
+  assert.deepEqual(mesh.content[0].platforms, ["youtube", "tiktok", "threads"]);
+  assert.equal(mesh.content[0].strongestPlatform.platform, "youtube");
+  assert.equal(mesh.content[0].weakestPlatform.platform, "threads");
+  assert.equal(mesh.content[0].posts.find((post) => post.platform === "threads").followersAvailable, false);
+  assert.match(mesh.content[0].recommendations[0], /recover threads first/i);
+  assert.match(mesh.methodology, /never by raw views/i);
+  assert.match(mesh.methodology, /paid delivery is excluded/i);
+});
+
+test("content mesh does not combine loosely related posts or distant publication dates", () => {
+  const mesh = buildContentMesh({
+    x: {
+      status: "connected",
+      account: {
+        username: "artist",
+        followers: 500,
+        averageViews: 100,
+        recentPosts: [{ id: "x-1", text: "Midnight Drive official video", permalink: "https://x.com/artist/status/1", createdAt: "2026-07-01T12:00:00.000Z", impressions: 80 }],
+      },
+    },
+    threads: {
+      status: "connected",
+      account: {
+        username: "artist",
+        averageViews: 100,
+        recentPosts: [{ id: "th-1", text: "Midnight Drive official video", permalink: "https://threads.com/@artist/post/1", createdAt: "2026-07-30T12:00:00.000Z", impressions: 80 }],
+      },
+    },
+  }, { now: "2026-07-30T12:00:00.000Z" });
+  assert.equal(mesh.summary.contentGroups, 2);
+  assert.equal(mesh.summary.crossPlatformGroups, 0);
 });

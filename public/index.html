@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="FanMesh unifies consented fan relationships and turns them into useful audience intelligence.">
     <title>FanMesh — Own the relationship</title>
-    <link rel="stylesheet" href="/styles.css?v=0.16.7">
+    <link rel="stylesheet" href="/styles.css?v=0.17.0">
   </head>
   <body>
     <section class="auth-gate" id="auth-gate" aria-labelledby="auth-title" hidden>
@@ -38,6 +38,7 @@
           <a href="#/audience" data-route="audience"><span class="nav-icon">◎</span> Audience <b id="audience-count">—</b></a>
           <a href="#/outreach" data-route="outreach"><span class="nav-icon">↗</span> Outreach</a>
           <a href="#/organic" data-route="organic"><span class="nav-icon">◌</span> Organic Pulse</a>
+          <a href="#/reach-lab" data-route="reach-lab"><span class="nav-icon">⌁</span> Reach Lab</a>
           <a href="#/connections" data-route="connections"><span class="nav-icon">⌘</span> Connections</a>
           <a href="#/developer" data-route="developer"><span class="nav-icon">{ }</span> Developer</a>
         </nav>
@@ -369,7 +370,7 @@
             <div><p class="eyebrow">Organic Pulse</p><h2>Give an under-reached post another honest chance.</h2></div>
             <span class="status good" id="organic-pulse-status">Synced posts</span>
           </div>
-          <p class="panel-copy">FanMesh ranks recent Instagram and TikTok posts using their real benchmark gap, follower-coverage gap, recency, and engagement. Start a pulse to save the organic baseline, prepare native follow-up actions, and create a direct-alert cohort before any ads begin.</p>
+          <p class="panel-copy">FanMesh ranks recent Instagram, TikTok, YouTube, X, and Threads posts using their real benchmark gap, available follower-coverage gap, recency, and engagement. Start a pulse to save the organic baseline, prepare native follow-up actions, and create a direct-alert cohort before any ads begin.</p>
           <div class="organic-summary" id="organic-summary">
             <span><small>Posts analyzed</small><strong>—</strong></span>
             <span><small>High priority</small><strong>—</strong></span>
@@ -379,6 +380,24 @@
             <div class="skeleton"></div><div class="skeleton"></div>
           </div>
           <p class="organic-method" id="organic-method">Waiting for connected-platform post signals.</p>
+        </section>
+
+        <section class="panel reach-lab" id="reach-lab" data-page="reach-lab" hidden>
+          <div class="panel-heading">
+            <div><p class="eyebrow">Content Mesh · Organic only</p><h2>One idea. Every platform. The real gap.</h2></div>
+            <span class="status good" id="reach-lab-status">Mapping content</span>
+          </div>
+          <p class="panel-copy">Reach Lab recognizes the same content across your authorized accounts, compares each version against that platform’s own recent baseline, and shows the most defensible next organic move. Raw views are never compared as if every platform distributes content the same way.</p>
+          <div class="reach-lab-summary" id="reach-lab-summary">
+            <span><small>Organic posts</small><strong>—</strong></span>
+            <span><small>Content ideas</small><strong>—</strong></span>
+            <span><small>Cross-platform matches</small><strong>—</strong></span>
+            <span><small>Recovery gaps</small><strong>—</strong></span>
+          </div>
+          <div class="reach-lab-list" id="reach-lab-list" aria-live="polite">
+            <div class="skeleton"></div><div class="skeleton"></div>
+          </div>
+          <p class="organic-method" id="reach-lab-method">Waiting for authorized organic post signals.</p>
         </section>
 
         <section class="campaign-grid" id="campaign" data-page="outreach" hidden>
@@ -436,6 +455,7 @@
             <article><span>Audience</span><strong>Private identity graph</strong><code>GET /api/v1/audience</code><p>Workspace-isolated fan records, explainable scoring, provenance, and consent state.</p></article>
             <article><span>Connections</span><strong>Official provider catalog</strong><code>GET /api/v1/connections</code><p>Configured, connected, and available capabilities without returning OAuth credentials.</p></article>
             <article><span>Organic</span><strong>Recovery opportunities</strong><code>GET /api/v1/organic/posts</code><p>Recent authorized post signals ranked with transparent opportunity components.</p></article>
+            <article><span>Reach Lab</span><strong>Cross-platform content mesh</strong><code>GET /api/v1/content-mesh</code><p>Matching content, own-platform benchmark indexes, and explainable organic recovery moves.</p></article>
             <article><span>Outreach</span><strong>Preview before delivery</strong><code>POST /api/v1/outreach/preview</code><p>Consent, provenance, holdout, and frequency-cap counts without exposing contact fields.</p></article>
           </div>
           <div class="developer-boundary"><strong>API boundary</strong><p>FanMesh never exposes stored platform tokens or raw delivery credentials. Every mutating operation rechecks the signed-in workspace and the relevant authorization.</p></div>
@@ -453,6 +473,6 @@
       </main>
     </div>
     <div class="toast" role="status" aria-live="polite"></div>
-    <script src="/app.js?v=0.16.7" type="module"></script>
+    <script src="/app.js?v=0.17.0" type="module"></script>
   </body>
 </html>
