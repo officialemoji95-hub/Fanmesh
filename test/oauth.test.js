@@ -722,6 +722,73 @@ test("X callback syncs recent original-post performance without exposing tokens"
   assert.equal(JSON.stringify(savedConnection).includes("x-access"), false);
 });
 
+test("Threads uses current threads.com endpoints, extends its token, and syncs post insights", async () => {
+  let savedConnection;
+  const service = createOAuthService({
+    environment: {
+      APP_BASE_URL: "https://fanmesh.example",
+      OAUTH_TOKEN_ENCRYPTION_KEY: encryptionKey,
+      THREADS_APP_ID: "threads-client",
+      THREADS_APP_SECRET: "threads-secret",
+    },
+    workspaceStore: {
+      async saveSourceConnection(user, accessToken, connection) {
+        savedConnection = connection;
+        return connection;
+      },
+    },
+    async fetchImpl(url, options = {}) {
+      const parsed = new URL(String(url));
+      assert.equal(parsed.hostname, "graph.threads.com");
+      if (parsed.pathname === "/oauth/access_token") {
+        assert.equal(options.method, "POST");
+        return response({ access_token: "threads-short", user_id: "threads-user-1", expires_in: 3600, scope: "threads_basic,threads_manage_insights" });
+      }
+      if (parsed.pathname === "/access_token") {
+        assert.equal(parsed.searchParams.get("grant_type"), "th_exchange_token");
+        assert.equal(parsed.searchParams.get("access_token"), "threads-short");
+        return response({ access_token: "threads-long", token_type: "bearer", expires_in: 5184000 });
+      }
+      assert.equal(parsed.searchParams.get("access_token"), "threads-long");
+      if (parsed.pathname === "/v1.0/me") {
+        return response({ id: "threads-user-1", username: "officialemoji95", name: "The Emoji" });
+      }
+      if (parsed.pathname === "/v1.0/me/threads") {
+        return response({ data: [{ id: "thread-1", text: "New music", permalink: "https://www.threads.com/@officialemoji95/post/thread-1", media_type: "TEXT", timestamp: "2026-07-31T12:00:00Z" }] });
+      }
+      if (parsed.pathname === "/v1.0/thread-1/insights") {
+        return response({ data: [
+          { name: "views", total_value: { value: 127 } },
+          { name: "likes", total_value: { value: 12 } },
+          { name: "replies", total_value: { value: 3 } },
+          { name: "reposts", total_value: { value: 4 } },
+          { name: "quotes", total_value: { value: 1 } },
+          { name: "shares", total_value: { value: 2 } },
+        ] });
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    },
+  });
+  const session = { user: { id: "user-1" }, accessToken: "supabase-token" };
+  const started = await service.begin("threads", session);
+  const authorization = new URL(started.redirectUrl);
+  assert.equal(authorization.origin, "https://www.threads.com");
+  assert.equal(authorization.pathname, "/oauth/authorize");
+  const state = authorization.searchParams.get("state");
+  await service.callback("threads", session, new URL(
+    `https://fanmesh.example/api/v1/oauth/threads/callback?code=code-1&state=${encodeURIComponent(state)}`,
+  ), { headers: { cookie: cookieHeader(started.cookies[0]) } });
+
+  assert.equal(savedConnection.metadata.public.profile.username, "officialemoji95");
+  assert.equal(savedConnection.metadata.public.recentPosts[0].permalink, "https://www.threads.com/@officialemoji95/post/thread-1");
+  assert.equal(savedConnection.metadata.metrics.recentPostImpressions, 127);
+  assert.equal(savedConnection.metadata.metrics.recentPostInteractions, 22);
+  const storedToken = service.vault.open(savedConnection.metadata.credentials);
+  assert.equal(storedToken.accessToken, "threads-long");
+  assert.deepEqual(storedToken.grantedScopes, ["threads_basic", "threads_manage_insights"]);
+  assert.equal(JSON.stringify(savedConnection).includes("threads-long"), false);
+});
+
 test("expired TikTok access is refreshed server-side before synchronization", async () => {
   let stored;
   const environment = {
