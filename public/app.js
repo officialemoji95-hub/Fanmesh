@@ -885,14 +885,21 @@ async function startConnection(platform, button) {
     const authorizationUrl = safeOAuthAuthorizationUrl(body.data?.redirectUrl, platform);
     if (!authorizationUrl) throw new Error(`${label} returned an unsafe authorization address`);
 
-    button.disabled = false;
-    button.textContent = `Continue to ${label} ↗`;
-    button.dataset.connectionAuthorize = authorizationUrl;
-    button.dataset.connectionAuthorizePlatform = platform;
-    delete button.dataset.connectionConnect;
-    window.requestAnimationFrame(() => {
+    const fallback = document.createElement("a");
+    fallback.className = "connection-button";
+    fallback.href = authorizationUrl;
+    fallback.target = "_blank";
+    fallback.rel = "noopener noreferrer";
+    fallback.textContent = `Continue to ${label} ↗`;
+    button.after(fallback);
+    button.hidden = true;
+    const restoreScroll = () => {
       if (document.scrollingElement) document.scrollingElement.scrollTop = scrollTop;
       else window.scrollTo({ top: scrollTop });
+    };
+    window.requestAnimationFrame(() => {
+      restoreScroll();
+      window.requestAnimationFrame(restoreScroll);
     });
 
     if (oauthWindow) {
@@ -1110,26 +1117,6 @@ document.addEventListener("click", async (event) => {
   if (rowAction) {
     const fan = fanRecords.find((item) => item.id === rowAction.dataset.fan);
     if (fan) showToast(`${fan.displayName}: score ${fan.fanScore.score}, led by ${fan.fanScore.strongestSignals[0]?.signal || "recent activity"}.`);
-  }
-
-  const authorizeButton = event.target.closest("[data-connection-authorize]");
-  if (authorizeButton) {
-    event.preventDefault();
-    const platform = authorizeButton.dataset.connectionAuthorizePlatform;
-    const authorizationUrl = safeOAuthAuthorizationUrl(authorizeButton.dataset.connectionAuthorize, platform);
-    if (!authorizationUrl) {
-      showToast("This connection link is no longer valid. Refresh the page and try again.");
-      return;
-    }
-    const link = document.createElement("a");
-    link.href = authorizationUrl;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    link.hidden = true;
-    document.body.append(link);
-    link.click();
-    link.remove();
-    return;
   }
 
   const connectButton = event.target.closest("[data-connection-connect]");
