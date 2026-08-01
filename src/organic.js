@@ -1,7 +1,15 @@
 import { createHash } from "node:crypto";
 import { prepareFanActivation } from "./activation.js";
 
-const ORGANIC_PLATFORMS = Object.freeze(["instagram", "tiktok"]);
+const ORGANIC_PLATFORMS = Object.freeze(["instagram", "tiktok", "youtube", "x", "threads"]);
+const CONTENT_MATCH_WINDOW_DAYS = 21;
+const CONTENT_MATCH_THRESHOLD = 0.58;
+const CONTENT_STOP_WORDS = new Set([
+  "about", "after", "again", "also", "been", "before", "from", "have", "into", "just",
+  "more", "much", "only", "over", "that", "their", "them", "then", "there", "these",
+  "they", "this", "those", "very", "want", "what", "when", "where", "which", "with",
+  "your", "https", "http", "www", "com",
+]);
 
 function text(value, maxLength = 180) {
   return typeof value === "string" ? value.trim().replace(/\s+/g, " ").slice(0, maxLength) : "";
@@ -73,26 +81,43 @@ function actionsFor(platform, reachableNow) {
       directAction,
     ];
   }
+  if (platform === "tiktok") return [
+      "Publish a native TikTok follow-up or Story that points people back to the original post.",
+      "Reply to genuine comments with useful context or a creator-made response video.",
+      directAction,
+    ];
+  if (platform === "youtube") return [
+      "Create a native Short, Community post, or pinned comment that gives viewers a fresh reason to watch the original upload.",
+      "Strengthen the title, thumbnail, and opening seconds only when the authorized retention and click signals support the change.",
+      directAction,
+    ];
+  if (platform === "x") return [
+      "Quote the original post from the creator account with new context instead of repeating the same copy.",
+      "Reply genuinely where followers have already asked relevant questions; do not automate mentions or engagement.",
+      directAction,
+    ];
   return [
-    "Publish a native TikTok follow-up or Story that points people back to the original post.",
-    "Reply to genuine comments with useful context or a creator-made response video.",
+    "Publish a native Threads follow-up with a stronger first line and a clear link back to the original post.",
+    "Continue the conversation through genuine replies from the creator account; do not automate engagement.",
     directAction,
   ];
 }
 
 function normalizedPost(input, now) {
   const followers = count(input.followers);
+  const followersAvailable = input.followersAvailable !== false;
   const currentReach = count(input.currentReach);
   const benchmark = count(input.benchmark);
   const interactions = count(input.interactions);
   const engagementRate = currentReach ? rate((interactions / currentReach) * 100) : 0;
   const ageDays = ageInDays(input.publishedAt, now);
   const score = scorePost({ currentReach, followers, benchmark, engagementRate, ageDays });
-  const coverageRate = followers ? rate((currentReach / followers) * 100) : 0;
+  const coverageRate = followersAvailable && followers ? rate((currentReach / followers) * 100) : null;
   const gapToBenchmark = Math.max(0, benchmark - currentReach);
   const reasons = [];
   if (benchmark && currentReach < benchmark) reasons.push(`${gapToBenchmark.toLocaleString("en-US")} below the recent ${input.benchmarkLabel}`);
-  if (followers) reasons.push(`${coverageRate.toFixed(2)}% observed follower coverage`);
+  if (followersAvailable && followers) reasons.push(`${coverageRate.toFixed(2)}% observed follower coverage`);
+  else if (!followersAvailable) reasons.push("follower count is not supplied by this API");
   if (ageDays !== null && ageDays <= 7) reasons.push("still inside a useful organic follow-up window");
   if (!reasons.length) reasons.push("keep measuring before adding paid distribution");
   return {
@@ -105,6 +130,7 @@ function normalizedPost(input, now) {
     publishedAt: input.publishedAt || null,
     ageDays,
     followers,
+    followersAvailable,
     views: count(input.views),
     currentReach,
     reachMetric: input.reachMetric,
@@ -122,8 +148,7 @@ function normalizedPost(input, now) {
   };
 }
 
-export function buildOrganicQueue(connectionStatuses = {}, options = {}) {
-  const now = new Date(options.now || Date.now()).toISOString();
+function collectOrganicPosts(connectionStatuses, now) {
   const posts = [];
   const meta = connectionStatuses.meta;
   if (meta?.status === "connected" && meta.account) {
@@ -140,6 +165,7 @@ export function buildOrganicQueue(connectionStatuses = {}, options = {}) {
           url: post.permalink,
           publishedAt: post.createdAt,
           followers: account.followers,
+          followersAvailable: true,
           views: post.views,
           currentReach: reach,
           reachMetric: post.reach ? "reach" : "views",
@@ -164,6 +190,7 @@ export function buildOrganicQueue(connectionStatuses = {}, options = {}) {
         url: post.shareUrl,
         publishedAt: post.createdAt,
         followers: tiktok.account.followers,
+        followersAvailable: true,
         views: post.views,
         currentReach: post.views,
         reachMetric: "views",
@@ -173,6 +200,61 @@ export function buildOrganicQueue(connectionStatuses = {}, options = {}) {
       }, now));
     }
   }
+
+  const youtube = connectionStatuses.youtube;
+  if (youtube?.status === "connected" && youtube.account) {
+    const benchmark = count(youtube.account.medianViews || youtube.account.averageViews);
+    for (const post of youtube.account.recentVideos || []) {
+      if (!post.id || !post.shareUrl) continue;
+      posts.push(normalizedPost({
+        platform: "youtube",
+        postId: post.id,
+        account: youtube.account.username || youtube.account.name,
+        title: post.title || post.description,
+        url: post.shareUrl,
+        publishedAt: post.createdAt,
+        followers: youtube.account.followers,
+        followersAvailable: !youtube.account.hiddenSubscribers,
+        views: post.views,
+        currentReach: post.views,
+        reachMetric: "views",
+        interactions: count(post.likes) + count(post.comments) + count(post.shares),
+        benchmark,
+        benchmarkLabel: "recent-video median",
+      }, now));
+    }
+  }
+
+  for (const platform of ["x", "threads"]) {
+    const source = connectionStatuses[platform];
+    if (source?.status !== "connected" || !source.account) continue;
+    const benchmark = count(source.account.averageViews);
+    for (const post of source.account.recentPosts || []) {
+      if (!post.id || !post.permalink) continue;
+      posts.push(normalizedPost({
+        platform,
+        postId: post.id,
+        account: source.account.username || source.account.name,
+        title: post.text,
+        url: post.permalink,
+        publishedAt: post.createdAt,
+        followers: source.account.followers,
+        followersAvailable: platform !== "threads",
+        views: post.impressions,
+        currentReach: post.impressions,
+        reachMetric: platform === "threads" ? "views" : "impressions",
+        interactions: count(post.likes) + count(post.replies) + count(post.reposts) + count(post.quotes) + count(post.shares),
+        benchmark,
+        benchmarkLabel: platform === "threads" ? "recent average views" : "recent average impressions",
+      }, now));
+    }
+  }
+  return posts;
+}
+
+export function buildOrganicQueue(connectionStatuses = {}, options = {}) {
+  const now = new Date(options.now || Date.now()).toISOString();
+  const posts = collectOrganicPosts(connectionStatuses, now);
 
   posts.sort((first, second) => second.opportunityScore - first.opportunityScore
     || (Date.parse(second.publishedAt || "") || 0) - (Date.parse(first.publishedAt || "") || 0));
@@ -184,13 +266,142 @@ export function buildOrganicQueue(connectionStatuses = {}, options = {}) {
       highPriority: posts.filter((post) => post.priority === "high").length,
       platforms: [...new Set(posts.map((post) => post.platform))],
     },
-    methodology: "Opportunity is explainable: 40% recent-benchmark gap, 30% observed follower-coverage gap, 20% recency, and 10% real engagement evidence. It predicts where a careful follow-up may help; it does not predict or guarantee feed delivery.",
+    methodology: "Opportunity is explainable: 40% recent-benchmark gap, 30% observed follower-coverage gap when the API supplies followers, 20% recency, and 10% real engagement evidence. Paid results are excluded. It predicts where a careful follow-up may help; it does not predict or guarantee feed delivery.",
+  };
+}
+
+function contentTokens(value) {
+  return [...new Set(text(value, 500)
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/[@#]/g, "")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .split(/\s+/)
+    .filter((token) => token.length >= 3 && !CONTENT_STOP_WORDS.has(token)))];
+}
+
+function contentSimilarity(first, second) {
+  const firstTokens = contentTokens(first.title);
+  const secondTokens = contentTokens(second.title);
+  if (!firstTokens.length || !secondTokens.length) return 0;
+  const secondSet = new Set(secondTokens);
+  const shared = firstTokens.filter((token) => secondSet.has(token)).length;
+  const exact = firstTokens.join(" ") === secondTokens.join(" ");
+  if (exact && firstTokens.join("").length >= 8) return 1;
+  if (shared < 2) return 0;
+  const overlap = shared / Math.min(firstTokens.length, secondTokens.length);
+  const union = new Set([...firstTokens, ...secondTokens]).size;
+  return rate((overlap * 0.7) + ((shared / union) * 0.3));
+}
+
+function publicationGapDays(first, second) {
+  const firstTime = Date.parse(first.publishedAt || "");
+  const secondTime = Date.parse(second.publishedAt || "");
+  if (!Number.isFinite(firstTime) || !Number.isFinite(secondTime)) return Number.POSITIVE_INFINITY;
+  return Math.abs(firstTime - secondTime) / 86400000;
+}
+
+function connectedOrganicPlatforms(connectionStatuses) {
+  const connected = [];
+  if (connectionStatuses.meta?.status === "connected" && connectionStatuses.meta.account?.instagramAccounts?.length) connected.push("instagram");
+  for (const platform of ["tiktok", "youtube", "x", "threads"]) {
+    if (connectionStatuses[platform]?.status === "connected") connected.push(platform);
+  }
+  return connected;
+}
+
+function contentGroup(group, connectedPlatforms) {
+  const posts = group.map((post) => ({
+    ...post,
+    performanceIndex: post.benchmark ? rate((post.currentReach / post.benchmark) * 100) : null,
+  })).sort((first, second) => (second.performanceIndex ?? -1) - (first.performanceIndex ?? -1));
+  const comparable = posts.filter((post) => post.performanceIndex !== null);
+  const strongest = comparable[0] || null;
+  const weakest = comparable.at(-1) || null;
+  const spread = strongest && weakest && strongest.key !== weakest.key
+    ? rate(strongest.performanceIndex - weakest.performanceIndex)
+    : 0;
+  const platforms = [...new Set(posts.map((post) => post.platform))];
+  const isCrossPlatform = platforms.length > 1;
+  const hasPerformanceGap = isCrossPlatform && spread >= 35;
+  const baseOpportunity = Math.max(...posts.map((post) => post.opportunityScore), 0);
+  const opportunityScore = Math.min(100, Math.round(baseOpportunity + (hasPerformanceGap ? Math.min(10, spread / 10) : 0)));
+  const missingPlatforms = connectedPlatforms.filter((platform) => !platforms.includes(platform));
+  const representative = [...posts].sort((first, second) => contentTokens(second.title).length - contentTokens(first.title).length)[0];
+  const recommendations = [];
+  if (hasPerformanceGap) {
+    recommendations.push(`Recover ${weakest.platform} first: it is at ${weakest.performanceIndex.toFixed(0)}% of its own recent benchmark versus ${strongest.platform} at ${strongest.performanceIndex.toFixed(0)}%.`);
+  } else if (weakest?.benchmark && weakest.currentReach < weakest.benchmark) {
+    recommendations.push(`Give the ${weakest.platform} version a native follow-up; it is below its own recent benchmark.`);
+  } else {
+    recommendations.push("Keep this content organic while FanMesh gathers a larger same-platform baseline.");
+  }
+  if (missingPlatforms.length) recommendations.push(`Adapt the idea natively for ${missingPlatforms.join(", ")}; do not simply repost a watermarked asset.`);
+  recommendations.push("Measure again after 24 and 72 hours, and keep any later paid delivery in a separate comparison.");
+  const digest = createHash("sha256").update(posts.map((post) => post.key).sort().join(":" )).digest("hex").slice(0, 14);
+  return {
+    id: `mesh_${digest}`,
+    title: representative.title,
+    platforms,
+    missingPlatforms,
+    posts,
+    opportunityScore,
+    priority: priorityFor(opportunityScore),
+    status: hasPerformanceGap ? "recovery_gap" : isCrossPlatform ? "cross_platform" : "single_platform",
+    strongestPlatform: strongest ? { platform: strongest.platform, performanceIndex: strongest.performanceIndex } : null,
+    weakestPlatform: weakest ? { platform: weakest.platform, performanceIndex: weakest.performanceIndex } : null,
+    performanceSpread: spread,
+    recommendations,
+    matchEvidence: isCrossPlatform
+      ? `Matched ${platforms.length} platform versions by caption/title overlap within ${CONTENT_MATCH_WINDOW_DAYS} days.`
+      : "No matching version was found among the currently synchronized platform posts.",
+  };
+}
+
+export function buildContentMesh(connectionStatuses = {}, options = {}) {
+  const now = new Date(options.now || Date.now()).toISOString();
+  const posts = collectOrganicPosts(connectionStatuses, now)
+    .sort((first, second) => (Date.parse(second.publishedAt || "") || 0) - (Date.parse(first.publishedAt || "") || 0));
+  const groups = [];
+  for (const post of posts) {
+    let bestGroup = null;
+    let bestSimilarity = 0;
+    for (const group of groups) {
+      if (group.some((candidate) => candidate.platform === post.platform)) continue;
+      for (const candidate of group) {
+        if (publicationGapDays(post, candidate) > CONTENT_MATCH_WINDOW_DAYS) continue;
+        const similarity = contentSimilarity(post, candidate);
+        if (similarity >= CONTENT_MATCH_THRESHOLD && similarity > bestSimilarity) {
+          bestGroup = group;
+          bestSimilarity = similarity;
+        }
+      }
+    }
+    if (bestGroup) bestGroup.push(post);
+    else groups.push([post]);
+  }
+  const connectedPlatforms = connectedOrganicPlatforms(connectionStatuses);
+  const content = groups.map((group) => contentGroup(group, connectedPlatforms))
+    .sort((first, second) => second.opportunityScore - first.opportunityScore
+      || Math.max(...second.posts.map((post) => Date.parse(post.publishedAt || "") || 0))
+        - Math.max(...first.posts.map((post) => Date.parse(post.publishedAt || "") || 0)));
+  return {
+    generatedAt: now,
+    content: content.slice(0, 30),
+    summary: {
+      postsAnalyzed: posts.length,
+      contentGroups: content.length,
+      crossPlatformGroups: content.filter((item) => item.platforms.length > 1).length,
+      recoveryGaps: content.filter((item) => item.status === "recovery_gap").length,
+      connectedPlatforms,
+    },
+    methodology: `FanMesh matches authorized organic posts by caption/title token overlap and a ${CONTENT_MATCH_WINDOW_DAYS}-day publication window. Performance is compared as a percentage of each platform's own recent benchmark, never by raw views across platforms. Paid delivery is excluded, and recommendations do not guarantee feed placement.`,
   };
 }
 
 export function prepareOrganicPulse(post, input = {}, eligibility = {}, options = {}) {
   if (!post || !ORGANIC_PLATFORMS.includes(post.platform) || !post.key || !post.url) {
-    throw new TypeError("Choose a recent post from an authorized Instagram or TikTok connection");
+    throw new TypeError("Choose a recent post from an authorized Instagram, TikTok, YouTube, X, or Threads connection");
   }
   const channels = Array.isArray(input.channels) && input.channels.length ? input.channels : ["email", "sms"];
   const plan = prepareFanActivation({
