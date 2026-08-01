@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
 import { createOAuthService, createTokenVault, OAuthError, STATE_COOKIE } from "../src/oauth.js";
 
 const encryptionKey = Buffer.alloc(32, 7).toString("base64");
@@ -14,6 +15,12 @@ function response(payload, status = 200) {
 
 function cookieHeader(setCookie) {
   return setCookie.split(";")[0];
+}
+
+function metaSignedRequest(payload, secret) {
+  const payloadPart = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signaturePart = createHmac("sha256", secret).update(payloadPart).digest("base64url");
+  return `${signaturePart}.${payloadPart}`;
 }
 
 test("token vault encrypts credential payloads and detects tampering", () => {
@@ -787,6 +794,41 @@ test("Threads uses current threads.com endpoints, extends its token, and syncs p
   assert.equal(storedToken.accessToken, "threads-long");
   assert.deepEqual(storedToken.grantedScopes, ["threads_basic", "threads_manage_insights"]);
   assert.equal(JSON.stringify(savedConnection).includes("threads-long"), false);
+});
+
+test("Threads compliance callbacks verify Meta signatures and clear stored authorization", async () => {
+  const appSecret = "threads-app-secret";
+  const revoked = [];
+  const service = createOAuthService({
+    environment: {
+      NODE_ENV: "production",
+      APP_BASE_URL: "https://fanmesh.example",
+      OAUTH_TOKEN_ENCRYPTION_KEY: encryptionKey,
+      THREADS_APP_ID: "threads-app-id",
+      THREADS_APP_SECRET: appSecret,
+    },
+    workspaceStore: {
+      async revokeSourceConnectionsByExternalAccount(platform, accountId, reason) {
+        revoked.push({ platform, accountId, reason });
+        return { revoked: 1 };
+      },
+    },
+  });
+  const signedRequest = metaSignedRequest({ algorithm: "HMAC-SHA256", user_id: "threads-user-1" }, appSecret);
+  const deauthorized = await service.handleThreadsCompliance("deauthorize", { signed_request: signedRequest });
+  const deleted = await service.handleThreadsCompliance("delete", { signed_request: signedRequest });
+
+  assert.deepEqual(deauthorized, { success: true, revoked: 1 });
+  assert.match(deleted.url, /^https:\/\/fanmesh\.example\/api\/v1\/oauth\/threads\/delete\/status\?code=/);
+  assert.match(deleted.confirmation_code, /^[A-Za-z0-9_-]{20,80}$/);
+  assert.deepEqual(revoked, [
+    { platform: "threads", accountId: "threads-user-1", reason: "deauthorization" },
+    { platform: "threads", accountId: "threads-user-1", reason: "data_deletion" },
+  ]);
+  await assert.rejects(
+    service.handleThreadsCompliance("delete", { signed_request: `${signedRequest}tampered` }),
+    /signature is invalid|malformed/,
+  );
 });
 
 test("expired TikTok access is refreshed server-side before synchronization", async () => {

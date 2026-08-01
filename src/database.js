@@ -1004,6 +1004,36 @@ export function createWorkspaceStore({ environment = process.env, fetchImpl = gl
     });
   }
 
+  async function revokeSourceConnectionsByExternalAccount(platform, externalAccountId, reason = "deauthorization") {
+    if (!adminKey) throw new DatabaseError("Provider compliance callbacks are not configured", 503);
+    const safePlatform = shortText(platform, 40);
+    const safeAccountId = shortText(externalAccountId, 160);
+    if (!safePlatform || !safeAccountId) throw new DatabaseError("Provider account identifier is missing", 400);
+    const filter = `platform=eq.${queryValue(safePlatform)}&external_account_id=eq.${queryValue(safeAccountId)}`;
+    const rows = await request(`/rest/v1/source_connections?select=workspace_id&${filter}`, adminKey);
+    if (!rows?.length) return { revoked: 0 };
+    const revokedAt = new Date().toISOString();
+    await request(`/rest/v1/source_connections?${filter}`, adminKey, {
+      method: "PATCH",
+      prefer: "return=minimal",
+      body: {
+        status: "revoked",
+        external_account_id: null,
+        scopes: [],
+        metadata: {
+          public: {},
+          metrics: {},
+          revokedAt,
+          revocationReason: shortText(reason, 80) || "deauthorization",
+        },
+        updated_at: revokedAt,
+      },
+    });
+    const workspaceIds = [...new Set(rows.map((row) => row.workspace_id).filter(Boolean))];
+    await Promise.all(workspaceIds.map((workspaceId) => refreshAudienceSnapshot({ id: workspaceId }, adminKey)));
+    return { revoked: rows.length };
+  }
+
   async function saveProviderWebhook(user, token, webhook) {
     if (!adminKey) throw new DatabaseError("Set SUPABASE_SERVICE_ROLE_KEY before enabling live platform leads", 503);
     const workspace = await workspaceFor(user, token);
@@ -1144,6 +1174,7 @@ export function createWorkspaceStore({ environment = process.env, fetchImpl = gl
     saveExperiment,
     saveProviderWebhook,
     saveSourceConnection,
+    revokeSourceConnectionsByExternalAccount,
     workspaceFor,
   });
 }

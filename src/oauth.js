@@ -240,6 +240,32 @@ function base64UrlSha256(value) {
   return createHash("sha256").update(value).digest("base64url");
 }
 
+export function verifyMetaSignedRequest(value, secret) {
+  const signedRequest = text(value, 12000);
+  const appSecret = text(secret, 2000);
+  const [signaturePart, payloadPart, extraPart] = signedRequest.split(".");
+  if (!signaturePart || !payloadPart || extraPart || !appSecret) {
+    throw new OAuthError("Threads compliance request is malformed", 400);
+  }
+  let receivedSignature;
+  let payload;
+  try {
+    receivedSignature = Buffer.from(signaturePart, "base64url");
+    payload = JSON.parse(Buffer.from(payloadPart, "base64url").toString("utf8"));
+  } catch {
+    throw new OAuthError("Threads compliance request is malformed", 400);
+  }
+  const expectedSignature = createHmac("sha256", appSecret).update(payloadPart).digest();
+  if (receivedSignature.length !== expectedSignature.length
+    || !timingSafeEqual(receivedSignature, expectedSignature)) {
+    throw new OAuthError("Threads compliance request signature is invalid", 401);
+  }
+  if (String(payload.algorithm || "").toUpperCase() !== "HMAC-SHA256") {
+    throw new OAuthError("Threads compliance request algorithm is unsupported", 400);
+  }
+  return payload;
+}
+
 function authorizeUrl(config, state, verifier) {
   let url;
   if (config.provider === "meta") {
@@ -1777,7 +1803,28 @@ export function createOAuthService({
     return { provider, label: providerConfig.label, status: "revoked" };
   }
 
-  return Object.freeze({ begin, callback, catalog, configureSnapchatLeadWebhooks, disconnect, fetchMetaLeadImport, sync, vault });
+  async function handleThreadsCompliance(action, input = {}) {
+    if (!['deauthorize', 'delete'].includes(action)) throw new OAuthError("Unsupported Threads compliance action", 404);
+    const providerConfig = requireReady("threads");
+    const payload = verifyMetaSignedRequest(input.signed_request || input.signedRequest, providerConfig.clientSecret);
+    const externalAccountId = text(payload.user_id, 160);
+    if (!externalAccountId) throw new OAuthError("Threads compliance request does not identify an account", 400);
+    const result = await workspaceStore.revokeSourceConnectionsByExternalAccount(
+      "threads",
+      externalAccountId,
+      action === "delete" ? "data_deletion" : "deauthorization",
+    );
+    if (action === "delete") {
+      const confirmationCode = randomBytes(18).toString("base64url");
+      return {
+        url: `${providerConfig.baseUrl}/api/v1/oauth/threads/delete/status?code=${encodeURIComponent(confirmationCode)}`,
+        confirmation_code: confirmationCode,
+      };
+    }
+    return { success: true, revoked: Number(result?.revoked) || 0 };
+  }
+
+  return Object.freeze({ begin, callback, catalog, configureSnapchatLeadWebhooks, disconnect, fetchMetaLeadImport, handleThreadsCompliance, sync, vault });
 }
 
 export { PROVIDERS, STATE_COOKIE };

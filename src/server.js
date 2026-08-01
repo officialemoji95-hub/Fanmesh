@@ -20,7 +20,7 @@ import {
   verifySnapchatWebhookSignature,
 } from "./snapchat.js";
 
-const APP_VERSION = "0.16.6";
+const APP_VERSION = "0.16.7";
 const port = Number(process.env.PORT || 3000);
 const publicDirectory = fileURLToPath(new URL("../public", import.meta.url));
 const maxBodyBytes = 2 * 1024 * 1024;
@@ -332,6 +332,28 @@ export function createRequestHandler({
       } catch (error) {
         return sendError(response, error);
       }
+    }
+
+    const threadsComplianceRoute = pathname.match(/^\/api\/v1\/oauth\/threads\/(deauthorize|delete)$/);
+    if (request.method === "POST" && threadsComplianceRoute) {
+      try {
+        const rawBody = await readRawBody(request);
+        const input = Object.fromEntries(new URLSearchParams(rawBody));
+        const result = await oauthService.handleThreadsCompliance(threadsComplianceRoute[1], input);
+        return sendJson(response, 200, result);
+      } catch (error) {
+        return sendError(response, error);
+      }
+    }
+
+    if (request.method === "GET" && pathname === "/api/v1/oauth/threads/delete/status") {
+      const confirmationCode = String(searchParams.get("code") || "");
+      if (!/^[A-Za-z0-9_-]{20,80}$/.test(confirmationCode)) {
+        const error = new Error("Deletion confirmation code is invalid");
+        error.statusCode = 400;
+        return sendError(response, error);
+      }
+      return sendJson(response, 200, { status: "completed", confirmation_code: confirmationCode });
     }
 
     const oauthRoute = pathname.match(/^\/api\/v1\/oauth\/([a-z_]+)\/(start|callback|sync|disconnect)$/);
