@@ -426,7 +426,7 @@ function safeOAuthAuthorizationUrl(value, platform) {
     snapchat: "accounts.snapchat.com",
     youtube: "accounts.google.com",
     x: "x.com",
-    threads: "www.threads.com",
+    threads: "threads.com",
   };
   try {
     const url = new URL(String(value || ""));

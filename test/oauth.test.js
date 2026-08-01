@@ -772,7 +772,7 @@ test("Threads uses current threads.com endpoints, extends its token, and syncs p
   const session = { user: { id: "user-1" }, accessToken: "supabase-token" };
   const started = await service.begin("threads", session);
   const authorization = new URL(started.redirectUrl);
-  assert.equal(authorization.origin, "https://www.threads.com");
+  assert.equal(authorization.origin, "https://threads.com");
   assert.equal(authorization.pathname, "/oauth/authorize");
   const state = authorization.searchParams.get("state");
   await service.callback("threads", session, new URL(
