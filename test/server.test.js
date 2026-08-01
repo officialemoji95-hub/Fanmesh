@@ -34,7 +34,7 @@ async function dispatch({ method = "GET", url = "/", body = "", headers = {}, ha
 test("health endpoint reports an operational service", async () => {
   const response = await dispatch({ url: "/api/health" });
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.16.7", database: "demo" });
+  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.17.0", database: "demo" });
 });
 
 test("public legal pages explain FanMesh data and platform rules", async () => {
@@ -50,7 +50,7 @@ test("workspace navigation separates each product area into a routed view", asyn
   const response = await dispatch({ url: "/" });
   const html = Buffer.concat(response.chunks).toString("utf8");
   assert.equal(response.statusCode, 200);
-  for (const route of ["overview", "audience", "outreach", "organic", "connections", "developer"]) {
+  for (const route of ["overview", "audience", "outreach", "organic", "reach-lab", "connections", "developer"]) {
     assert.match(html, new RegExp(`href="#/${route}"`));
     assert.match(html, new RegExp(`data-page="${route}"`));
   }
@@ -431,6 +431,16 @@ test("organic post queue is explicit when no live accounts are configured", asyn
   assert.equal(response.statusCode, 200);
   assert.equal(response.json().data.summary.postsAnalyzed, 0);
   assert.equal(response.json().meta.synced, false);
+});
+
+test("content mesh endpoint is explicit about organic-only cross-platform analysis", async () => {
+  const response = await dispatch({ url: "/api/v1/content-mesh" });
+  const body = response.json();
+  assert.equal(response.statusCode, 200);
+  assert.equal(body.data.summary.postsAnalyzed, 0);
+  assert.equal(body.meta.synced, false);
+  assert.equal(body.meta.paidIncluded, false);
+  assert.match(body.data.methodology, /own recent benchmark/i);
 });
 
 test("organic activation uses a recent authorized post and persists its pre-ad baseline", async () => {
