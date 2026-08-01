@@ -82,21 +82,54 @@ export function publicConnectionState(row = {}, providerWebhooks = []) {
   const profile = publicData.profile || {};
   const organizations = Array.isArray(publicData.organizations) ? publicData.organizations : [];
   const metrics = row.metadata?.metrics || {};
+  const videoHost = row.platform === "youtube" ? "youtube.com" : "tiktok.com";
   const recentVideos = (Array.isArray(publicData.recentVideos) ? publicData.recentVideos : [])
     .slice(0, 20)
     .map((video) => ({
-      id: String(video?.id || "").slice(0, 80),
-      title: String(video?.title || "Untitled TikTok post").slice(0, 150),
-      description: String(video?.description || "").slice(0, 150),
-      shareUrl: String(video?.shareUrl || "").slice(0, 1000),
-      createdAt: video?.createdAt || null,
-      duration: Math.max(0, Number(video?.duration) || 0),
+      id: shortText(video?.id, 80),
+      title: shortText(video?.title, 180) || `Untitled ${row.platform === "youtube" ? "YouTube video" : "TikTok post"}`,
+      description: shortText(video?.description, 240),
+      shareUrl: safePublicUrl(video?.shareUrl, videoHost),
+      thumbnailUrl: row.platform === "youtube" ? safePublicUrl(video?.thumbnailUrl, "ytimg.com") : "",
+      createdAt: safeTimestamp(video?.createdAt),
+      duration: shortText(video?.duration, 40) || Math.max(0, Number(video?.duration) || 0),
+      privacyStatus: shortText(video?.privacyStatus, 40),
       views: Math.max(0, Number(video?.views) || 0),
       likes: Math.max(0, Number(video?.likes) || 0),
       comments: Math.max(0, Number(video?.comments) || 0),
       shares: Math.max(0, Number(video?.shares) || 0),
     }))
     .filter((video) => video.id);
+  const recentPosts = (Array.isArray(publicData.recentPosts) ? publicData.recentPosts : [])
+    .slice(0, 20)
+    .map((post) => ({
+      id: shortText(post?.id, 100),
+      text: shortText(post?.text, 500),
+      permalink: safePublicUrl(post?.permalink, row.platform === "threads" ? "threads.net" : "x.com"),
+      createdAt: safeTimestamp(post?.createdAt),
+      mediaType: shortText(post?.mediaType, 40),
+      isQuotePost: Boolean(post?.isQuotePost),
+      impressions: Math.max(0, Number(post?.impressions) || 0),
+      likes: Math.max(0, Number(post?.likes) || 0),
+      replies: Math.max(0, Number(post?.replies) || 0),
+      reposts: Math.max(0, Number(post?.reposts) || 0),
+      quotes: Math.max(0, Number(post?.quotes) || 0),
+      shares: Math.max(0, Number(post?.shares) || 0),
+    }))
+    .filter((post) => post.id);
+  const analytics28d = publicData.analytics28d && typeof publicData.analytics28d === "object" ? {
+    period: "last_28_complete_days",
+    startDate: shortText(publicData.analytics28d.startDate, 10),
+    endDate: shortText(publicData.analytics28d.endDate, 10),
+    views: Math.max(0, Number(publicData.analytics28d.views) || 0),
+    estimatedMinutesWatched: Math.max(0, Number(publicData.analytics28d.estimatedMinutesWatched) || 0),
+    averageViewDuration: Math.max(0, Number(publicData.analytics28d.averageViewDuration) || 0),
+    subscribersGained: Math.max(0, Number(publicData.analytics28d.subscribersGained) || 0),
+    subscribersLost: Math.max(0, Number(publicData.analytics28d.subscribersLost) || 0),
+    likes: Math.max(0, Number(publicData.analytics28d.likes) || 0),
+    comments: Math.max(0, Number(publicData.analytics28d.comments) || 0),
+    shares: Math.max(0, Number(publicData.analytics28d.shares) || 0),
+  } : null;
   const pages = (Array.isArray(publicData.pages) ? publicData.pages : []).slice(0, 100).map((page) => ({
     id: shortText(page?.id, 80),
     name: shortText(page?.name, 120) || "Untitled Page",
@@ -247,15 +280,18 @@ export function publicConnectionState(row = {}, providerWebhooks = []) {
     signUps: Math.max(0, Number(publicData.campaignSummaryLifetime.signUps) || 0),
     conversions: Math.max(0, Number(publicData.campaignSummaryLifetime.conversions) || 0),
   } : null;
-  const accountName = profile.name || profile.username || organizations[0]?.name || null;
+  const accountName = shortText(profile.name || profile.username || organizations[0]?.name, 160) || null;
   return {
     status: row.status || "not_connected",
     externalAccountId: row.external_account_id || null,
     scopes: Array.isArray(row.scopes) ? row.scopes : [],
     account: accountName ? {
       name: accountName,
-      username: profile.username || null,
+      username: shortText(profile.username, 120) || null,
       followers: Number(metrics.totalFollowers) || 0,
+      hiddenSubscribers: Boolean(metrics.hiddenSubscribers),
+      channelViews: Number(metrics.channelViews) || 0,
+      videoCount: Number(metrics.videoCount) || 0,
       adAccounts: Number(metrics.adAccounts) || 0,
       campaignCount: Number(metrics.campaigns) || snapchatCampaigns.length,
       activeCampaigns: Number(metrics.activeCampaigns) || snapchatCampaigns.filter((campaign) => campaign.status === "ACTIVE").length,
@@ -288,7 +324,18 @@ export function publicConnectionState(row = {}, providerWebhooks = []) {
       recentShares: Number(metrics.recentShares) || 0,
       latestVideoAt: metrics.latestVideoAt || recentVideos[0]?.createdAt || null,
       performanceWindow: metrics.performanceWindow || null,
+      recentPostCount: Number(metrics.recentPostCount) || recentPosts.length,
+      recentPostImpressions: Number(metrics.recentPostImpressions) || 0,
+      recentPostInteractions: Number(metrics.recentPostInteractions) || 0,
+      postEngagementRate: Number(metrics.postEngagementRate) || 0,
+      latestPostAt: safeTimestamp(metrics.latestPostAt) || recentPosts[0]?.createdAt || null,
+      analyticsViews28d: Number(metrics.analyticsViews28d) || analytics28d?.views || 0,
+      watchMinutes28d: Number(metrics.watchMinutes28d) || analytics28d?.estimatedMinutesWatched || 0,
+      subscribersGained28d: Number(metrics.subscribersGained28d) || analytics28d?.subscribersGained || 0,
+      subscribersLost28d: Number(metrics.subscribersLost28d) || analytics28d?.subscribersLost || 0,
       recentVideos,
+      recentPosts,
+      analytics28d,
       pages,
       instagramAccounts,
       adAccountsDetail: adAccounts,
