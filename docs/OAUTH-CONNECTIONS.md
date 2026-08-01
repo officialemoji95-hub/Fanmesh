@@ -1,6 +1,6 @@
 # Official platform connections
 
-FanMesh v0.7 connects creator and business accounts through official OAuth consent screens. It never asks for a platform password. Authorization codes are exchanged on the server, and access and refresh tokens are encrypted with AES-256-GCM before the encrypted value is stored in the workspace's row-level-secured `source_connections` record.
+FanMesh connects creator and business accounts through official OAuth consent screens. It never asks for a platform password. Authorization codes are exchanged on the server, and access and refresh tokens are encrypted with AES-256-GCM before the encrypted value is stored in the workspace's row-level-secured `source_connections` record.
 
 ## Shared Render settings
 
@@ -24,6 +24,7 @@ Register the exact HTTPS callback for every developer app:
 | Meta | `https://fanmesh.onrender.com/api/v1/oauth/meta/callback` |
 | TikTok | `https://fanmesh.onrender.com/api/v1/oauth/tiktok/callback` |
 | Snapchat | `https://fanmesh.onrender.com/api/v1/oauth/snapchat/callback` |
+| YouTube | `https://fanmesh.onrender.com/api/v1/oauth/youtube/callback` |
 | X | `https://fanmesh.onrender.com/api/v1/oauth/x/callback` |
 | Threads | `https://fanmesh.onrender.com/api/v1/oauth/threads/callback` |
 
@@ -97,6 +98,19 @@ The Connections screen reports five safe readiness gates: developer credentials,
 
 Public Profile API access uses the separate `snapchat-profile-api` scope and is currently subject to Snapchat allowlisting; add that scope only after approval.
 
+## YouTube
+
+Create a Google Cloud OAuth client for a web application, enable the YouTube Data API v3 and YouTube Analytics API, register the YouTube callback, and add:
+
+```text
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+```
+
+FanMesh requests `youtube.readonly` and `yt-analytics.readonly` with offline access. The sync reads the signed-in creator's channel totals, uploads playlist, up to 20 recent videos, and an aggregate report for the last 28 complete days. Subscriber totals remain labeled private when the channel hides them. The 28-day report includes views, watch minutes, average view duration, subscriber gains/losses, likes, comments, and shares.
+
+This creator connection does not authorize Google Ads. Google Ads campaign and lead reporting requires its own OAuth scope, customer selection, and approved Ads developer token, so it will remain a separate card and credential boundary.
+
 ## X
 
 Create an X developer project/app, enable OAuth 2.0, set it as a confidential web client when available, register the X callback and add:
@@ -106,7 +120,7 @@ X_CLIENT_ID=
 X_CLIENT_SECRET=
 ```
 
-FanMesh uses the Authorization Code flow with PKCE and requests `tweet.read`, `users.read`, and `offline.access`. The initial sync reads the authorized profile and public metrics. X Ads is a separate approved API that currently uses OAuth 1.0a; it will be implemented as a distinct ad connection rather than mixing credentials into the organic profile flow.
+FanMesh uses the Authorization Code flow with PKCE and requests `tweet.read`, `users.read`, and `offline.access`. Each sync reads the authorized profile, follower total, and up to 20 recent original posts with returned impressions, likes, replies, reposts, and quotes. X Ads is a separate approved API that currently uses OAuth 1.0a; it will be implemented as a distinct ad connection rather than mixing credentials into the organic profile flow.
 
 ## Threads
 
@@ -117,7 +131,7 @@ THREADS_APP_ID=
 THREADS_APP_SECRET=
 ```
 
-Threads is intentionally a separate connection from Meta Pages/Instagram. Its default scopes are `threads_basic` and `threads_manage_insights`.
+Threads is intentionally a separate connection from Meta Pages/Instagram. Its default scopes are `threads_basic` and `threads_manage_insights`. The sync reads up to 20 recent posts and requests insights for the first 10; when Meta does not grant a metric, FanMesh shows an access note instead of inventing a value.
 
 ## What a completed connection does
 
@@ -133,14 +147,14 @@ The Connections screen can then run a manual sync or disconnect. Disconnecting e
 
 ## Provider rollout
 
-Provider depth is prioritized over a row of shallow login buttons. Meta established the shared connection contract. Snapchat Business is now the active full adapter, and the remaining providers reuse the same authorization, sync, consent, health, and attribution rules.
+Provider depth is prioritized over a row of shallow login buttons. Meta and Snapchat established the business and ads contract. YouTube, X, and Threads now reuse the same encrypted authorization, safe sync, health, and attribution rules for creator analytics.
 
 After live developer apps have authorized successfully, the adapter order is:
 
-1. operate Snapchat Lead Generation Form webhooks against live authorized forms and add campaign reporting;
+1. authorize and operate YouTube creator analytics, X organic performance, and Threads insights;
 2. add Snapchat Public Profile metrics after allowlisting;
 3. signed Meta Lead Ads webhook delivery with replay protection and background sync jobs;
 4. TikTok for Business advertising authorization;
-5. Google Ads and YouTube campaign reporting through their approved developer products;
-6. X Ads OAuth 1.0a after Ads API approval and Threads expansion through its separate Meta developer product;
+5. Google Ads campaign and lead reporting through its approved developer product;
+6. X Ads OAuth 1.0a after Ads API approval;
 7. platform-native publishing only for products and scopes explicitly approved for the app.

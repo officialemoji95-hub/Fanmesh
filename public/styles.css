@@ -106,7 +106,7 @@ h2 { font-size: 18px; }
 .roadmap-card span { color: #8174c7; font-size: 7px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .roadmap-card strong { display: block; margin-top: 5px; font-size: 10px; }
 .roadmap-card p { min-height: 0; margin: 6px 0 0; color: #7f7f86; font-size: 8px; line-height: 1.55; }
-.source-grid { margin-top: 16px; display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.source-grid { margin-top: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
 .source-card { position: relative; min-width: 0; padding: 13px; border: 1px solid #e8e6df; border-radius: 9px; background: #fbfaf6; }
 .source-card.is-connected { border-color: #bfe1d1; background: linear-gradient(150deg, #f5fcf8, #fbfaf6 65%); }
 .source-icon { display: grid; place-items: center; width: 28px; height: 28px; margin-bottom: 10px; color: #fff; border-radius: 8px; font-size: 9px; font-weight: 800; text-transform: uppercase; }
@@ -175,6 +175,8 @@ h2 { font-size: 18px; }
 .snapchat-entity-list small { margin-top: 2px; color: #858177; font-size: 6px; }
 .snapchat-more { margin-top: 8px; color: #76746c; font-size: 7px; }
 .platform-performance { margin-top: 14px; padding: 16px; border: 1px solid #d7e2ea; border-radius: 11px; background: linear-gradient(140deg, #f3f7ff, #fbfaf6 62%); }
+.youtube-performance { border-color: #ead7d9; background: linear-gradient(140deg, #fff4f4, #fbfaf6 62%); }
+.text-performance { border-color: #dadbe0; background: linear-gradient(140deg, #f5f5f7, #fbfaf6 62%); }
 .platform-performance-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .platform-performance-heading h3 { margin-top: 3px; font-size: 15px; }
 .platform-performance-metrics { margin-top: 13px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }

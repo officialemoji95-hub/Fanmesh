@@ -358,6 +358,89 @@ test("TikTok callback verifies state, encrypts tokens, and stores a safe account
   assert.match(result.cookies[0], /Max-Age=0/);
 });
 
+test("YouTube callback requests offline consent and syncs channel, uploads, and 28-day analytics", async () => {
+  let savedConnection;
+  const now = Date.parse("2026-08-01T12:00:00.000Z");
+  const service = createOAuthService({
+    now: () => now,
+    environment: {
+      NODE_ENV: "production",
+      APP_BASE_URL: "https://fanmesh.example",
+      OAUTH_TOKEN_ENCRYPTION_KEY: encryptionKey,
+      GOOGLE_CLIENT_ID: "google-client",
+      GOOGLE_CLIENT_SECRET: "google-secret",
+    },
+    workspaceStore: {
+      async saveSourceConnection(user, accessToken, connection) {
+        assert.equal(user.id, "user-1");
+        assert.equal(accessToken, "supabase-token");
+        savedConnection = connection;
+        return { status: connection.status };
+      },
+    },
+    async fetchImpl(url, options = {}) {
+      const parsed = new URL(String(url));
+      if (parsed.hostname === "oauth2.googleapis.com") {
+        assert.equal(options.method, "POST");
+        assert.match(options.body, /grant_type=authorization_code/);
+        return response({ access_token: "youtube-access", refresh_token: "youtube-refresh", expires_in: 3600, scope: "https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/yt-analytics.readonly" });
+      }
+      assert.equal(options.headers.authorization, "Bearer youtube-access");
+      if (parsed.pathname.endsWith("/youtube/v3/channels")) {
+        assert.equal(parsed.searchParams.get("mine"), "true");
+        return response({ items: [{
+          id: "channel-1",
+          snippet: { title: "Official Emoji", customUrl: "@officialemoji95", description: "Artist", thumbnails: { high: { url: "https://yt3.ggpht.com/avatar" } }, country: "NG" },
+          statistics: { subscriberCount: "118000", viewCount: "2500000", videoCount: "75", hiddenSubscriberCount: false },
+          contentDetails: { relatedPlaylists: { uploads: "uploads-1" } },
+        }] });
+      }
+      if (parsed.pathname.endsWith("/youtube/v3/playlistItems")) {
+        return response({ items: [{ contentDetails: { videoId: "video-1" }, snippet: { resourceId: { videoId: "video-1" } } }] });
+      }
+      if (parsed.pathname.endsWith("/youtube/v3/videos")) {
+        return response({ items: [{
+          id: "video-1",
+          snippet: { title: "New release", description: "Listen now", publishedAt: "2026-07-31T10:00:00Z", thumbnails: { high: { url: "https://i.ytimg.com/vi/video-1/hqdefault.jpg" } } },
+          statistics: { viewCount: "127", likeCount: "20", commentCount: "4" },
+          contentDetails: { duration: "PT2M30S" },
+          status: { privacyStatus: "public" },
+        }] });
+      }
+      if (parsed.hostname === "youtubeanalytics.googleapis.com") {
+        assert.equal(parsed.searchParams.get("ids"), "channel==MINE");
+        assert.equal(parsed.searchParams.get("startDate"), "2026-07-04");
+        assert.equal(parsed.searchParams.get("endDate"), "2026-07-31");
+        return response({
+          columnHeaders: ["views", "estimatedMinutesWatched", "averageViewDuration", "subscribersGained", "subscribersLost", "likes", "comments", "shares"].map((name) => ({ name })),
+          rows: [[42000, 120000, 171, 600, 45, 5200, 410, 920]],
+        });
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    },
+  });
+  const session = { user: { id: "user-1" }, accessToken: "supabase-token" };
+  const started = await service.begin("youtube", session);
+  const authorization = new URL(started.redirectUrl);
+  assert.equal(authorization.hostname, "accounts.google.com");
+  assert.equal(authorization.searchParams.get("access_type"), "offline");
+  assert.equal(authorization.searchParams.get("prompt"), "consent");
+  assert.match(authorization.searchParams.get("scope"), /yt-analytics\.readonly/);
+  const state = authorization.searchParams.get("state");
+  const result = await service.callback("youtube", session, new URL(
+    `https://fanmesh.example/api/v1/oauth/youtube/callback?code=code-1&state=${encodeURIComponent(state)}`,
+  ), { headers: { cookie: cookieHeader(started.cookies[0]) } });
+
+  assert.equal(result.account, "Official Emoji");
+  assert.equal(savedConnection.metadata.metrics.totalFollowers, 118000);
+  assert.equal(savedConnection.metadata.metrics.channelViews, 2500000);
+  assert.equal(savedConnection.metadata.public.recentVideos[0].views, 127);
+  assert.equal(savedConnection.metadata.public.analytics28d.views, 42000);
+  assert.equal(savedConnection.metadata.public.analytics28d.estimatedMinutesWatched, 120000);
+  assert.equal(JSON.stringify(savedConnection).includes("youtube-access"), false);
+  assert.equal(service.vault.open(savedConnection.metadata.credentials).refreshToken, "youtube-refresh");
+});
+
 test("Meta callback syncs authorized Pages, organic Instagram media, ad insights, and lead-form inventory", async () => {
   let savedConnection;
   let tokenExchanges = 0;
@@ -591,6 +674,52 @@ test("X authorization uses a PKCE challenge and never places its verifier in the
   assert.equal(url.searchParams.get("code_challenge_method"), "S256");
   assert.ok(url.searchParams.get("code_challenge"));
   assert.equal(url.searchParams.has("code_verifier"), false);
+});
+
+test("X callback syncs recent original-post performance without exposing tokens", async () => {
+  let savedConnection;
+  const service = createOAuthService({
+    environment: {
+      APP_BASE_URL: "http://localhost:3000",
+      OAUTH_TOKEN_ENCRYPTION_KEY: encryptionKey,
+      X_CLIENT_ID: "x-client",
+    },
+    workspaceStore: {
+      async saveSourceConnection(user, accessToken, connection) {
+        savedConnection = connection;
+        return connection;
+      },
+    },
+    async fetchImpl(url, options = {}) {
+      const parsed = new URL(String(url));
+      if (parsed.pathname === "/2/oauth2/token") {
+        assert.match(options.body, /code_verifier=/);
+        return response({ access_token: "x-access", refresh_token: "x-refresh", expires_in: 7200, scope: "tweet.read users.read offline.access" });
+      }
+      assert.equal(options.headers.authorization, "Bearer x-access");
+      if (parsed.pathname === "/2/users/me") {
+        return response({ data: { id: "x-user-1", name: "Official Emoji", username: "officialemoji95", verified: true, public_metrics: { followers_count: 118000 } } });
+      }
+      if (parsed.pathname === "/2/users/x-user-1/tweets") {
+        assert.equal(parsed.searchParams.get("exclude"), "retweets");
+        assert.equal(parsed.searchParams.get("max_results"), "20");
+        return response({ data: [{ id: "post-1", text: "New music is out", created_at: "2026-07-31T12:00:00Z", public_metrics: { impression_count: 127, like_count: 12, reply_count: 3, retweet_count: 4, quote_count: 1 } }] });
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    },
+  });
+  const session = { user: { id: "user-1" }, accessToken: "supabase-token" };
+  const started = await service.begin("x", session);
+  const state = new URL(started.redirectUrl).searchParams.get("state");
+  await service.callback("x", session, new URL(
+    `http://localhost:3000/api/v1/oauth/x/callback?code=code-1&state=${encodeURIComponent(state)}`,
+  ), { headers: { cookie: cookieHeader(started.cookies[0]) } });
+
+  assert.equal(savedConnection.metadata.metrics.totalFollowers, 118000);
+  assert.equal(savedConnection.metadata.metrics.recentPostImpressions, 127);
+  assert.equal(savedConnection.metadata.metrics.recentPostInteractions, 20);
+  assert.equal(savedConnection.metadata.public.recentPosts[0].permalink, "https://x.com/officialemoji95/status/post-1");
+  assert.equal(JSON.stringify(savedConnection).includes("x-access"), false);
 });
 
 test("expired TikTok access is refreshed server-side before synchronization", async () => {

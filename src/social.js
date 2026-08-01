@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-export const SOCIAL_PLATFORMS = ["instagram", "facebook", "tiktok", "youtube", "spotify"];
+export const SOCIAL_PLATFORMS = ["instagram", "facebook", "tiktok", "youtube", "x", "threads", "spotify"];
 export const LEAD_SOURCES = ["meta_ads", "facebook_export", "instagram_export", "tiktok_ads", "snapchat_ads", "x_ads", "google_ads", "youtube_ads", "threads_ads", "youtube_export", "csv"];
 export const IDENTITY_SOURCES = ["facebook_export", "instagram_export", "tiktok_export", "youtube_export"];
 const OFFICIAL_LEAD_EXPORT_SOURCES = new Set(["meta_ads", "tiktok_ads", "snapchat_ads", "x_ads", "google_ads", "youtube_ads", "threads_ads"]);
@@ -23,6 +23,12 @@ const PLATFORM_CAPABILITIES = {
     authMethod: "oauth",
     capabilities: ["organizations", "ad_accounts", "campaign_reporting"],
     caveat: "Public Profile insights require Snapchat allowlisting in addition to Marketing API authorization.",
+  },
+  youtube: {
+    label: "YouTube",
+    authMethod: "oauth",
+    capabilities: ["channel_profile", "subscriber_totals", "video_performance", "channel_analytics"],
+    caveat: "Google Ads uses a separate authorization and an approved Ads developer token.",
   },
   x: {
     label: "X",
@@ -410,7 +416,7 @@ export function planSocialExperiment(input = {}) {
     : "evergreen";
   const platforms = uniqueStrings(input.platforms, SOCIAL_PLATFORMS);
   const channels = uniqueStrings(input.channels, ["native_social", "consented_direct", "authorized_ads"]);
-  const selectedPlatforms = platforms.length ? platforms : ["instagram", "facebook", "tiktok", "youtube"];
+  const selectedPlatforms = platforms.length ? platforms : ["instagram", "facebook", "tiktok", "youtube", "x", "threads"];
   const selectedChannels = channels.length ? channels : ["native_social", "consented_direct", "authorized_ads"];
   const holdoutPercent = Math.min(50, Math.max(0, finiteNumber(input.holdoutPercent, 10)));
   const counts = {

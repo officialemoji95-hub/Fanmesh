@@ -407,6 +407,23 @@ function safeInstagramUrl(value) {
   }
 }
 
+function safePlatformUrl(value, platform) {
+  const allowed = platform === "youtube" ? ["youtube.com", "youtu.be"] : platform === "threads" ? ["threads.net"] : ["x.com"];
+  try {
+    const url = new URL(String(value || ""));
+    if (url.protocol !== "https:") return "";
+    if (!allowed.some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`))) return "";
+    return url.href;
+  } catch {
+    return "";
+  }
+}
+
+function durationLabel(seconds) {
+  const value = Math.max(0, Math.round(Number(seconds) || 0));
+  return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, "0")}`;
+}
+
 function formatMoney(value, currency) {
   if (!currency || currency === "mixed" || value === null || value === undefined) return currency === "mixed" ? "Mixed currencies" : "—";
   try {
@@ -458,6 +475,94 @@ function renderTikTokPerformance(catalog) {
     </div>
     <div class="tiktok-video-list">${rows || `<p class="tiktok-empty">TikTok returned no public videos for this account yet. Sync again after publishing a public post.</p>`}</div>
     <p class="tiktok-method">Transparent window: up to the 20 most recent public posts returned by TikTok. Engagement is (likes + comments + shares) ÷ views.</p>`;
+}
+
+function renderYouTubePerformance(catalog) {
+  const target = document.querySelector("#youtube-performance");
+  const source = catalog.social.find((item) => item.platform === "youtube");
+  if (source?.status !== "connected" || !source.account) {
+    target.hidden = true;
+    target.innerHTML = "";
+    return;
+  }
+  const account = source.account;
+  const report = account.analytics28d || {};
+  const videos = Array.isArray(account.recentVideos) ? account.recentVideos.slice(0, 8) : [];
+  const rows = videos.map((video) => {
+    const url = safePlatformUrl(video.shareUrl, "youtube");
+    const title = escapeHtml(video.title || "Untitled YouTube video");
+    return `<article class="meta-media-row">
+      <div class="meta-media-title">${url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${title} ↗</a>` : `<strong>${title}</strong>`}<small>${escapeHtml(shortDate(video.createdAt))}${video.privacyStatus ? ` · ${escapeHtml(video.privacyStatus)}` : ""}</small></div>
+      <span><b>${numberFormatter.format(video.views || 0)}</b><small>views</small></span>
+      <span><b>${numberFormatter.format(video.likes || 0)}</b><small>likes</small></span>
+      <span><b>${numberFormatter.format(video.comments || 0)}</b><small>comments</small></span>
+      <span><b>${percent(video.views ? ((video.likes || 0) + (video.comments || 0)) / video.views * 100 : 0)}</b><small>engagement / view</small></span>
+    </article>`;
+  }).join("");
+  const issues = Array.isArray(account.syncIssues) ? account.syncIssues : [];
+  const netSubscribers = (report.subscribersGained || 0) - (report.subscribersLost || 0);
+  target.hidden = false;
+  target.innerHTML = `
+    <div class="platform-performance-heading">
+      <div><p class="eyebrow">YouTube creator analytics</p><h3>Channel health and recent upload performance</h3></div>
+      <span class="status ${issues.length ? "warning" : "good"}">${issues.length ? `${issues.length} access note${issues.length === 1 ? "" : "s"}` : "Official analytics synced"}</span>
+    </div>
+    <div class="platform-performance-metrics">
+      <span><small>${account.hiddenSubscribers ? "Subscribers hidden" : "Subscribers"}</small><strong>${account.hiddenSubscribers ? "Private" : numberFormatter.format(account.followers || 0)}</strong></span>
+      <span><small>Lifetime channel views</small><strong>${numberFormatter.format(account.channelViews || 0)}</strong></span>
+      <span><small>Channel videos</small><strong>${numberFormatter.format(account.videoCount || 0)}</strong></span>
+      <span><small>Recent-video median</small><strong>${numberFormatter.format(account.medianViews || 0)}</strong></span>
+    </div>
+    <div class="meta-ad-strip">
+      <span><small>Views · 28d</small><strong>${numberFormatter.format(report.views || 0)}</strong></span>
+      <span><small>Watch time · 28d</small><strong>${numberFormatter.format(report.estimatedMinutesWatched || 0)} min</strong></span>
+      <span><small>Average view duration</small><strong>${durationLabel(report.averageViewDuration)}</strong></span>
+      <span><small>Subscribers · net 28d</small><strong>${netSubscribers > 0 ? "+" : ""}${numberFormatter.format(netSubscribers)}</strong></span>
+      <span><small>Interactions · 28d</small><strong>${numberFormatter.format((report.likes || 0) + (report.comments || 0) + (report.shares || 0))}</strong></span>
+    </div>
+    <div class="meta-media-list">${rows || `<p class="platform-empty">The channel is connected, but YouTube returned no recent uploads.</p>`}</div>
+    ${issues.length ? `<div class="meta-sync-issues"><strong>YouTube access notes</strong><ul>${issues.map((issue) => `<li><strong>${escapeHtml(capabilityLabel(issue.area))}:</strong> ${escapeHtml(issue.message)}</li>`).join("")}</ul></div>` : ""}
+    <p class="platform-method">Creator reporting uses the official YouTube Data and YouTube Analytics APIs. The 28-day window ends yesterday so incomplete current-day data does not distort the comparison. Google Ads remains a separate connection.</p>`;
+}
+
+function renderTextPlatformPerformance(catalog, platform) {
+  const target = document.querySelector(`#${platform}-performance`);
+  const source = catalog.social.find((item) => item.platform === platform);
+  if (source?.status !== "connected" || !source.account) {
+    target.hidden = true;
+    target.innerHTML = "";
+    return;
+  }
+  const account = source.account;
+  const posts = Array.isArray(account.recentPosts) ? account.recentPosts.slice(0, 8) : [];
+  const label = platform === "x" ? "X" : "Threads";
+  const rows = posts.map((post) => {
+    const url = safePlatformUrl(post.permalink, platform);
+    const postText = escapeHtml(post.text || `${label} post`);
+    return `<article class="meta-media-row">
+      <div class="meta-media-title">${url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${postText} ↗</a>` : `<strong>${postText}</strong>`}<small>${escapeHtml(shortDate(post.createdAt))}${post.mediaType ? ` · ${escapeHtml(capabilityLabel(post.mediaType))}` : ""}</small></div>
+      <span><b>${numberFormatter.format(post.impressions || 0)}</b><small>${platform === "threads" ? "views" : "impressions"}</small></span>
+      <span><b>${numberFormatter.format(post.likes || 0)}</b><small>likes</small></span>
+      <span><b>${numberFormatter.format(post.replies || 0)}</b><small>replies</small></span>
+      <span><b>${numberFormatter.format((post.reposts || 0) + (post.quotes || 0) + (post.shares || 0))}</b><small>reposts + shares</small></span>
+    </article>`;
+  }).join("");
+  const issues = Array.isArray(account.syncIssues) ? account.syncIssues : [];
+  target.hidden = false;
+  target.innerHTML = `
+    <div class="platform-performance-heading">
+      <div><p class="eyebrow">${label} creator signals</p><h3>Recent posts and authorized performance</h3></div>
+      <span class="status ${issues.length ? "warning" : "good"}">${issues.length ? `${issues.length} access note${issues.length === 1 ? "" : "s"}` : "Official account synced"}</span>
+    </div>
+    <div class="platform-performance-metrics">
+      <span><small>Followers</small><strong>${platform === "threads" && !account.followers ? "Not provided" : numberFormatter.format(account.followers || 0)}</strong></span>
+      <span><small>Posts measured</small><strong>${numberFormatter.format(account.recentPostCount || 0)}</strong></span>
+      <span><small>${platform === "threads" ? "Views" : "Impressions"}</small><strong>${numberFormatter.format(account.recentPostImpressions || 0)}</strong></span>
+      <span><small>Engagement / view</small><strong>${percent(account.postEngagementRate)}</strong></span>
+    </div>
+    <div class="meta-media-list">${rows || `<p class="platform-empty">${label} returned no recent posts for this authorization.</p>`}</div>
+    ${issues.length ? `<div class="meta-sync-issues"><strong>${label} access notes</strong><ul>${issues.map((issue) => `<li><strong>${escapeHtml(capabilityLabel(issue.area))}:</strong> ${escapeHtml(issue.message)}</li>`).join("")}</ul></div>` : ""}
+    <p class="platform-method">FanMesh reads only the posts and metrics granted by the official ${label} creator API. This measures performance; it does not force feed placement. ${platform === "x" ? "X Ads is a separately approved product." : "Threads authorization remains separate from Instagram."}</p>`;
 }
 
 function renderMetaPerformance(catalog) {
@@ -726,7 +831,7 @@ function renderConnections(catalog) {
       <p>${escapeHtml(source.caveat || "Import only records you are authorized to use.")}</p>
       <div class="source-tags">${source.capabilities.slice(0, 2).map((capability) => `<span>${escapeHtml(capabilityLabel(capability))}</span>`).join("")}</div>
       ${source.status === "connected" ? `
-        <div class="connection-summary"><strong>${source.platform === "snapchat" ? `${numberFormatter.format(source.account?.campaignCount || 0)} campaigns` : `${numberFormatter.format(source.account?.followers || 0)} followers`}</strong><span>${source.platform === "tiktok" ? `${numberFormatter.format(source.account?.recentVideoCount || 0)} posts · ${numberFormatter.format(source.account?.averageViews || 0)} avg views` : source.platform === "meta" ? `${numberFormatter.format(source.account?.pageCount || 0)} Pages · ${numberFormatter.format(source.account?.instagramAccountCount || 0)} Instagram` : source.platform === "snapchat" ? `${numberFormatter.format(source.account?.adAccounts || 0)} ad accounts · ${numberFormatter.format(source.account?.adCount || 0)} ads · ${numberFormatter.format(source.account?.leadFormCount || 0)} lead forms` : `${numberFormatter.format(source.account?.adAccounts || 0)} ad accounts`}</span></div>
+        <div class="connection-summary"><strong>${source.platform === "snapchat" ? `${numberFormatter.format(source.account?.campaignCount || 0)} campaigns` : source.platform === "youtube" && source.account?.hiddenSubscribers ? "Subscribers private" : `${numberFormatter.format(source.account?.followers || 0)} followers`}</strong><span>${source.platform === "tiktok" ? `${numberFormatter.format(source.account?.recentVideoCount || 0)} posts · ${numberFormatter.format(source.account?.averageViews || 0)} avg views` : source.platform === "youtube" ? `${numberFormatter.format(source.account?.videoCount || 0)} channel videos · ${numberFormatter.format(source.account?.analyticsViews28d || 0)} views in 28d` : source.platform === "x" || source.platform === "threads" ? `${numberFormatter.format(source.account?.recentPostCount || 0)} recent posts · ${numberFormatter.format(source.account?.recentPostImpressions || 0)} ${source.platform === "threads" ? "views" : "impressions"}` : source.platform === "meta" ? `${numberFormatter.format(source.account?.pageCount || 0)} Pages · ${numberFormatter.format(source.account?.instagramAccountCount || 0)} Instagram` : source.platform === "snapchat" ? `${numberFormatter.format(source.account?.adAccounts || 0)} ad accounts · ${numberFormatter.format(source.account?.adCount || 0)} ads · ${numberFormatter.format(source.account?.leadFormCount || 0)} lead forms` : `${numberFormatter.format(source.account?.adAccounts || 0)} ad accounts`}</span></div>
         <div class="connection-actions"><button class="connection-button" type="button" data-connection-sync="${escapeHtml(source.platform)}">Sync now</button><button class="connection-link" type="button" data-connection-disconnect="${escapeHtml(source.platform)}">Disconnect</button></div>
       ` : source.configured && source.connectUrl ? `
         <a class="connection-button" href="${escapeHtml(source.connectUrl)}">Connect ${escapeHtml(source.label)} ↗</a>
@@ -741,6 +846,9 @@ function renderConnections(catalog) {
   renderMetaLeadImport(catalog);
   renderSnapchatLeadCapture(catalog);
   renderTikTokPerformance(catalog);
+  renderYouTubePerformance(catalog);
+  renderTextPlatformPerformance(catalog, "x");
+  renderTextPlatformPerformance(catalog, "threads");
 }
 
 async function runConnectionAction(action, platform, button) {
