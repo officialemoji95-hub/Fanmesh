@@ -872,7 +872,10 @@ async function startConnection(platform, button) {
   const label = button.textContent.replace(/^Connect\s+|\s+↗$/g, "") || platform;
   const original = button.textContent;
   const scrollTop = document.scrollingElement?.scrollTop || window.scrollY || 0;
-  const oauthWindow = window.open("about:blank", "_blank");
+  // Threads documents a native browser/webview authorization window. Keep
+  // that flow in this tab so in-app browsers cannot silently block it as a
+  // popup; the OAuth callback returns the creator to FanMesh afterward.
+  const oauthWindow = platform === "threads" ? null : window.open("about:blank", "_blank");
   button.disabled = true;
   button.textContent = `Preparing ${label}…`;
   try {
@@ -884,6 +887,11 @@ async function startConnection(platform, button) {
     if (!response.ok) throw new Error(body.error?.message || `${label} authorization could not start`);
     const authorizationUrl = safeOAuthAuthorizationUrl(body.data?.redirectUrl, platform);
     if (!authorizationUrl) throw new Error(`${label} returned an unsafe authorization address`);
+
+    if (platform === "threads") {
+      window.location.assign(authorizationUrl);
+      return;
+    }
 
     const fallback = document.createElement("a");
     fallback.className = "connection-button";
