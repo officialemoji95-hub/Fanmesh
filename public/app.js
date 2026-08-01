@@ -419,6 +419,23 @@ function safePlatformUrl(value, platform) {
   }
 }
 
+function safeOAuthAuthorizationUrl(value, platform) {
+  const allowedHosts = {
+    meta: "www.facebook.com",
+    tiktok: "www.tiktok.com",
+    snapchat: "accounts.snapchat.com",
+    youtube: "accounts.google.com",
+    x: "x.com",
+    threads: "www.threads.com",
+  };
+  try {
+    const url = new URL(String(value || ""));
+    return url.protocol === "https:" && url.hostname === allowedHosts[platform] ? url.href : "";
+  } catch {
+    return "";
+  }
+}
+
 function durationLabel(seconds) {
   const value = Math.max(0, Math.round(Number(seconds) || 0));
   return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, "0")}`;
@@ -834,7 +851,7 @@ function renderConnections(catalog) {
         <div class="connection-summary"><strong>${source.platform === "snapchat" ? `${numberFormatter.format(source.account?.campaignCount || 0)} campaigns` : source.platform === "youtube" && source.account?.hiddenSubscribers ? "Subscribers private" : `${numberFormatter.format(source.account?.followers || 0)} followers`}</strong><span>${source.platform === "tiktok" ? `${numberFormatter.format(source.account?.recentVideoCount || 0)} posts · ${numberFormatter.format(source.account?.averageViews || 0)} avg views` : source.platform === "youtube" ? `${numberFormatter.format(source.account?.videoCount || 0)} channel videos · ${numberFormatter.format(source.account?.analyticsViews28d || 0)} views in 28d` : source.platform === "x" || source.platform === "threads" ? `${numberFormatter.format(source.account?.recentPostCount || 0)} recent posts · ${numberFormatter.format(source.account?.recentPostImpressions || 0)} ${source.platform === "threads" ? "views" : "impressions"}` : source.platform === "meta" ? `${numberFormatter.format(source.account?.pageCount || 0)} Pages · ${numberFormatter.format(source.account?.instagramAccountCount || 0)} Instagram` : source.platform === "snapchat" ? `${numberFormatter.format(source.account?.adAccounts || 0)} ad accounts · ${numberFormatter.format(source.account?.adCount || 0)} ads · ${numberFormatter.format(source.account?.leadFormCount || 0)} lead forms` : `${numberFormatter.format(source.account?.adAccounts || 0)} ad accounts`}</span></div>
         <div class="connection-actions"><button class="connection-button" type="button" data-connection-sync="${escapeHtml(source.platform)}">Sync now</button><button class="connection-link" type="button" data-connection-disconnect="${escapeHtml(source.platform)}">Disconnect</button></div>
       ` : source.configured && source.connectUrl ? `
-        <a class="connection-button" href="${escapeHtml(source.connectUrl)}">Connect ${escapeHtml(source.label)} ↗</a>
+        <button class="connection-button" type="button" data-connection-connect="${escapeHtml(source.platform)}">Connect ${escapeHtml(source.label)} ↗</button>
       ` : `
         <span class="connection-needed">Developer app needed</span>
       `}
@@ -849,6 +866,53 @@ function renderConnections(catalog) {
   renderYouTubePerformance(catalog);
   renderTextPlatformPerformance(catalog, "x");
   renderTextPlatformPerformance(catalog, "threads");
+}
+
+async function startConnection(platform, button) {
+  const label = button.textContent.replace(/^Connect\s+|\s+↗$/g, "") || platform;
+  const original = button.textContent;
+  const oauthWindow = window.open("about:blank", "_blank");
+  button.disabled = true;
+  button.textContent = `Preparing ${label}…`;
+  try {
+    const response = await fetch(`/api/v1/oauth/${encodeURIComponent(platform)}/start`, {
+      method: "POST",
+      headers: { accept: "application/json" },
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error?.message || `${label} authorization could not start`);
+    const authorizationUrl = safeOAuthAuthorizationUrl(body.data?.redirectUrl, platform);
+    if (!authorizationUrl) throw new Error(`${label} returned an unsafe authorization address`);
+
+    const fallback = document.createElement("a");
+    fallback.className = "connection-button";
+    fallback.href = authorizationUrl;
+    fallback.target = "_blank";
+    fallback.rel = "noopener noreferrer";
+    fallback.textContent = `Continue to ${label} ↗`;
+    button.replaceWith(fallback);
+
+    if (oauthWindow) {
+      oauthWindow.opener = null;
+      oauthWindow.location.replace(authorizationUrl);
+      window.setTimeout(() => {
+        try {
+          if (!oauthWindow.closed && oauthWindow.location.href === "about:blank") {
+            showToast(`Your browser blocked ${label}. Tap Continue to ${label} again.`);
+          }
+        } catch {
+          // Cross-origin access is denied once the platform consent screen opens successfully.
+        }
+      }, 1200);
+    } else {
+      showToast(`Pop-ups are blocked. Tap Continue to ${label} to open the consent screen.`);
+    }
+  } catch (error) {
+    if (oauthWindow && !oauthWindow.closed) oauthWindow.close();
+    button.disabled = false;
+    button.textContent = original;
+    showToast(error.message);
+  }
 }
 
 async function runConnectionAction(action, platform, button) {
@@ -1044,6 +1108,9 @@ document.addEventListener("click", async (event) => {
     const fan = fanRecords.find((item) => item.id === rowAction.dataset.fan);
     if (fan) showToast(`${fan.displayName}: score ${fan.fanScore.score}, led by ${fan.fanScore.strongestSignals[0]?.signal || "recent activity"}.`);
   }
+
+  const connectButton = event.target.closest("[data-connection-connect]");
+  if (connectButton) await startConnection(connectButton.dataset.connectionConnect, connectButton);
 
   const syncButton = event.target.closest("[data-connection-sync]");
   if (syncButton) await runConnectionAction("sync", syncButton.dataset.connectionSync, syncButton);
