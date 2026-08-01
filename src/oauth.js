@@ -296,7 +296,7 @@ function authorizeUrl(config, state, verifier) {
       code_challenge_method: "S256",
     });
   } else {
-    url = new URL("https://threads.net/oauth/authorize");
+    url = new URL("https://www.threads.com/oauth/authorize");
     url.search = new URLSearchParams({
       client_id: config.clientId,
       redirect_uri: config.callbackUrl,
@@ -379,7 +379,7 @@ async function exchangeCode(config, code, verifier, fetchImpl) {
       snapchat: "https://accounts.snapchat.com/login/oauth2/access_token",
       youtube: "https://oauth2.googleapis.com/token",
       x: "https://api.x.com/2/oauth2/token",
-      threads: "https://graph.threads.net/oauth/access_token",
+      threads: "https://graph.threads.com/oauth/access_token",
     };
     const values = config.provider === "tiktok" ? {
       client_key: config.clientId,
@@ -409,11 +409,35 @@ async function exchangeCode(config, code, verifier, fetchImpl) {
       headers,
       body: formBody(values),
     });
+    if (config.provider === "threads") {
+      const shortLivedPayload = payload;
+      try {
+        const extendedUrl = accessTokenUrl("https://graph.threads.com/access_token", payload.access_token, {
+          grant_type: "th_exchange_token",
+          client_secret: config.clientSecret,
+        });
+        const extendedPayload = await platformRequest(fetchImpl, extendedUrl);
+        payload = { ...extendedPayload, scope: extendedPayload.scope || shortLivedPayload.scope };
+      } catch {
+        // A valid short-lived token is still useful when long-lived exchange is unavailable.
+      }
+    }
   }
   return normalizedToken(payload);
 }
 
 async function refreshAccessToken(config, token, fetchImpl) {
+  if (config.provider === "threads") {
+    const refreshUrl = accessTokenUrl("https://graph.threads.com/refresh_access_token", token.accessToken, {
+      grant_type: "th_refresh_token",
+    });
+    const payload = await platformRequest(fetchImpl, refreshUrl);
+    return {
+      ...token,
+      ...normalizedToken(payload, token.refreshToken),
+      grantedScopes: token.grantedScopes || [],
+    };
+  }
   if (!token.refreshToken || !["tiktok", "snapchat", "youtube", "x"].includes(config.provider)) {
     throw new OAuthError(`${config.label} authorization has expired; reconnect the account`, 401);
   }
@@ -1330,20 +1354,20 @@ async function syncX(token, fetchImpl) {
 }
 
 async function syncThreads(token, fetchImpl) {
-  const profile = await platformRequest(fetchImpl, accessTokenUrl("https://graph.threads.net/v1.0/me", token.accessToken, {
+  const profile = await platformRequest(fetchImpl, accessTokenUrl("https://graph.threads.com/v1.0/me", token.accessToken, {
     fields: "id,username,threads_profile_picture_url,threads_biography",
   }));
   const syncIssues = [];
   let recentPosts = [];
   try {
-    const postsPayload = await platformRequest(fetchImpl, accessTokenUrl("https://graph.threads.net/v1.0/me/threads", token.accessToken, {
+    const postsPayload = await platformRequest(fetchImpl, accessTokenUrl("https://graph.threads.com/v1.0/me/threads", token.accessToken, {
       fields: "id,media_type,permalink,text,timestamp,shortcode,is_quote_post",
       limit: String(MAX_THREADS_POSTS),
     }));
     recentPosts = (Array.isArray(postsPayload.data) ? postsPayload.data : []).slice(0, MAX_THREADS_POSTS).map((post) => ({
       id: text(post?.id, 100),
       text: text(post?.text, 500),
-      permalink: safeHttpsUrl(post?.permalink, "threads.net"),
+      permalink: safeHttpsUrl(post?.permalink, "threads.com") || safeHttpsUrl(post?.permalink, "threads.net"),
       mediaType: text(post?.media_type, 40),
       createdAt: post?.timestamp || null,
       isQuotePost: Boolean(post?.is_quote_post),
@@ -1362,7 +1386,7 @@ async function syncThreads(token, fetchImpl) {
     recentPosts = await Promise.all(recentPosts.map(async (post, index) => {
       if (index >= 10) return post;
       try {
-        const insightPayload = await platformRequest(fetchImpl, accessTokenUrl(`https://graph.threads.net/v1.0/${encodeURIComponent(post.id)}/insights`, token.accessToken, {
+        const insightPayload = await platformRequest(fetchImpl, accessTokenUrl(`https://graph.threads.com/v1.0/${encodeURIComponent(post.id)}/insights`, token.accessToken, {
           metric: "views,likes,replies,reposts,quotes,shares",
         }));
         const values = Object.fromEntries((Array.isArray(insightPayload.data) ? insightPayload.data : []).map((item) => [item?.name, nonNegativeNumber(item?.total_value?.value ?? item?.values?.[0]?.value)]));

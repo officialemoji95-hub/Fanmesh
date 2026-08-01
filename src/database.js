@@ -70,7 +70,8 @@ function safePublicUrl(value, allowedHost) {
   try {
     const url = new URL(shortText(value, 1000));
     if (url.protocol !== "https:") return "";
-    if (url.hostname !== allowedHost && !url.hostname.endsWith(`.${allowedHost}`)) return "";
+    const allowedHosts = Array.isArray(allowedHost) ? allowedHost : [allowedHost];
+    if (!allowedHosts.some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`))) return "";
     return url.href;
   } catch {
     return "";
@@ -105,7 +106,7 @@ export function publicConnectionState(row = {}, providerWebhooks = []) {
     .map((post) => ({
       id: shortText(post?.id, 100),
       text: shortText(post?.text, 500),
-      permalink: safePublicUrl(post?.permalink, row.platform === "threads" ? "threads.net" : "x.com"),
+      permalink: safePublicUrl(post?.permalink, row.platform === "threads" ? ["threads.com", "threads.net"] : "x.com"),
       createdAt: safeTimestamp(post?.createdAt),
       mediaType: shortText(post?.mediaType, 40),
       isQuotePost: Boolean(post?.isQuotePost),
