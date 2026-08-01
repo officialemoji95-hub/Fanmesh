@@ -28,6 +28,43 @@ test("new private workspaces start with truthful zero metrics", () => {
   assert.equal(Object.isFrozen(emptyAudienceSnapshot), true);
 });
 
+test("public connection summaries sanitize YouTube and text-post URLs while stripping private fields", () => {
+  const youtube = publicConnectionState({
+    platform: "youtube",
+    status: "connected",
+    external_account_id: "channel-1",
+    metadata: {
+      credentials: "encrypted-secret",
+      public: {
+        profile: { name: "Artist Channel", username: "@artist" },
+        recentVideos: [
+          { id: "video-1", title: "Release", shareUrl: "https://www.youtube.com/watch?v=video-1", thumbnailUrl: "https://i.ytimg.com/vi/video-1/hq.jpg", duration: "PT2M", views: 127 },
+          { id: "video-2", title: "Bad URL", shareUrl: "https://evil.example/video-2", secret: "drop-me" },
+        ],
+        analytics28d: { startDate: "2026-07-04", endDate: "2026-07-31", views: 42000, estimatedMinutesWatched: 120000, unknown: "drop-me" },
+      },
+      metrics: { totalFollowers: 118000, channelViews: 2500000, videoCount: 75, analyticsViews28d: 42000 },
+    },
+  });
+  assert.equal(youtube.account.recentVideos[0].shareUrl, "https://www.youtube.com/watch?v=video-1");
+  assert.equal(youtube.account.recentVideos[1].shareUrl, "");
+  assert.equal(youtube.account.analytics28d.views, 42000);
+  assert.equal(youtube.account.channelViews, 2500000);
+  assert.equal(JSON.stringify(youtube).includes("encrypted-secret"), false);
+  assert.equal(JSON.stringify(youtube).includes("drop-me"), false);
+
+  const x = publicConnectionState({
+    platform: "x",
+    status: "connected",
+    metadata: { public: { profile: { name: "Artist" }, recentPosts: [
+      { id: "post-1", text: "Hello", permalink: "https://x.com/artist/status/post-1", impressions: 50 },
+      { id: "post-2", text: "No redirect", permalink: "https://tracker.example/post-2" },
+    ] }, metrics: { recentPostCount: 2, recentPostImpressions: 50 } },
+  });
+  assert.equal(x.account.recentPosts[0].permalink, "https://x.com/artist/status/post-1");
+  assert.equal(x.account.recentPosts[1].permalink, "");
+});
+
 test("activation eligibility uses exact workspace counts without exposing contacts", async () => {
   const calls = [];
   function response(payload, status = 200) {
