@@ -296,7 +296,10 @@ function authorizeUrl(config, state, verifier) {
       code_challenge_method: "S256",
     });
   } else {
-    url = new URL("https://www.threads.com/oauth/authorize");
+    // Meta's Threads OAuth authorization window uses the apex host. The
+    // `www` host is a different OAuth client surface and rejects otherwise
+    // valid Threads redirect URIs as unregistered.
+    url = new URL("https://threads.com/oauth/authorize");
     url.search = new URLSearchParams({
       client_id: config.clientId,
       redirect_uri: config.callbackUrl,
