@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="FanMesh unifies consented fan relationships and turns them into useful audience intelligence.">
     <title>FanMesh — Own the relationship</title>
-    <link rel="stylesheet" href="/styles.css?v=0.15.0">
+    <link rel="stylesheet" href="/styles.css?v=0.16.0">
   </head>
   <body>
     <section class="auth-gate" id="auth-gate" aria-labelledby="auth-title" hidden>
@@ -120,8 +120,8 @@
             </div>
             <div class="roadmap-grid">
               <article class="roadmap-card"><span>01 · Foundation</span><strong>Meta end to end</strong><p>Facebook Pages, Instagram insights, ad accounts, Instant Forms, token refresh, and authorized lead import establish the shared connection contract.</p></article>
-              <article class="roadmap-card current"><span>02 · Current focus</span><strong>Snapchat Business</strong><p>See authorized campaigns, ad squads, ads, and lifetime delivery results, then receive new consented Lead Generation Form submissions through verified Snap webhooks.</p></article>
-              <article class="roadmap-card"><span>03 · Expansion lane</span><strong>TikTok, Google/YouTube, X and Threads</strong><p>Apply the same connection, sync, consent provenance, health, and attribution contract after each developer product is approved.</p></article>
+              <article class="roadmap-card"><span>02 · Ads foundation</span><strong>Snapchat Business</strong><p>See authorized campaigns, ad squads, ads, and lifetime delivery results, then receive new consented Lead Generation Form submissions through verified Snap webhooks.</p></article>
+              <article class="roadmap-card current"><span>03 · Current focus</span><strong>YouTube, X and Threads</strong><p>Connect official creator accounts, measure recent content, and keep creator analytics separate from the independently approved Google Ads and X Ads products.</p></article>
             </div>
           </section>
           <div class="source-grid" id="source-grid" aria-live="polite">
@@ -173,6 +173,9 @@
             </form>
           </section>
           <section class="tiktok-performance" id="tiktok-performance" aria-live="polite" hidden></section>
+          <section class="platform-performance youtube-performance" id="youtube-performance" aria-live="polite" hidden></section>
+          <section class="platform-performance text-performance" id="x-performance" aria-live="polite" hidden></section>
+          <section class="platform-performance text-performance" id="threads-performance" aria-live="polite" hidden></section>
           <p class="connection-setup-note">Developer apps must be configured before a Connect button activates. Platform review determines which profile, publishing, advertising and lead permissions are available.</p>
           <section class="import-workbench identity-import-workbench" aria-labelledby="identity-import-title">
             <div class="import-intro">
@@ -265,6 +268,8 @@
                   <label class="check"><input type="checkbox" name="platforms" value="facebook" checked> Facebook</label>
                   <label class="check"><input type="checkbox" name="platforms" value="tiktok" checked> TikTok</label>
                   <label class="check"><input type="checkbox" name="platforms" value="youtube" checked> YouTube</label>
+                  <label class="check"><input type="checkbox" name="platforms" value="x" checked> X</label>
+                  <label class="check"><input type="checkbox" name="platforms" value="threads" checked> Threads</label>
                 </fieldset>
                 <fieldset>
                   <legend>Reach paths</legend>
@@ -448,6 +453,6 @@
       </main>
     </div>
     <div class="toast" role="status" aria-live="polite"></div>
-    <script src="/app.js?v=0.15.0" type="module"></script>
+    <script src="/app.js?v=0.16.0" type="module"></script>
   </body>
 </html>
