@@ -34,7 +34,7 @@ async function dispatch({ method = "GET", url = "/", body = "", headers = {}, ha
 test("health endpoint reports an operational service", async () => {
   const response = await dispatch({ url: "/api/health" });
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.16.1", database: "demo" });
+  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.16.2", database: "demo" });
 });
 
 test("public legal pages explain FanMesh data and platform rules", async () => {
@@ -555,6 +555,33 @@ test("OAuth start redirects only after server-side session authorization", async
   assert.equal(response.statusCode, 302);
   assert.match(response.headers.location, /tiktok\.com/);
   assert.deepEqual(response.headers["set-cookie"], ["session=refreshed", "oauth=state"]);
+});
+
+test("OAuth start can return a signed JSON handoff without navigating through an API redirect", async () => {
+  const handler = createRequestHandler({
+    authService: {
+      config: { configured: true },
+      async session() {
+        return { data: { authenticated: true, user: { id: "user-1" }, accessToken: "private" }, cookies: ["session=refreshed"] };
+      },
+    },
+    workspaceStore: {},
+    oauthService: {
+      catalog() { return []; },
+      async begin(provider, session) {
+        assert.equal(provider, "threads");
+        assert.equal(session.user.id, "user-1");
+        return { redirectUrl: "https://www.threads.com/oauth/authorize?state=test", cookies: ["oauth=state"] };
+      },
+    },
+  });
+  const response = await dispatch({ method: "POST", url: "/api/v1/oauth/threads/start", handler });
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.headers["set-cookie"], ["session=refreshed", "oauth=state"]);
+  assert.deepEqual(response.json().data, {
+    provider: "threads",
+    redirectUrl: "https://www.threads.com/oauth/authorize?state=test",
+  });
 });
 
 test("lead preview endpoint returns consent validation results", async () => {
