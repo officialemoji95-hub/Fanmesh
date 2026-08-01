@@ -20,6 +20,9 @@ const MAX_SNAPCHAT_AD_SQUADS = 400;
 const MAX_SNAPCHAT_ADS = 600;
 const MAX_SNAPCHAT_LEAD_FORMS = 100;
 const MAX_SNAPCHAT_WEBHOOK_FORMS = 10;
+const MAX_YOUTUBE_VIDEOS = 20;
+const MAX_X_POSTS = 20;
+const MAX_THREADS_POSTS = 20;
 const SNAPCHAT_REPORT_FIELDS = [
   "impressions",
   "swipes",
@@ -67,13 +70,22 @@ const PROVIDERS = Object.freeze({
     capabilities: ["Organizations", "Snap ad accounts", "Lead form webhooks", "Campaign reporting"],
     caveat: "Lead forms require Marketing API access; live lead capture also requires Organization Admin access. Public Profile metrics require separate allowlisting.",
   },
+  youtube: {
+    label: "YouTube",
+    clientIdKey: "GOOGLE_CLIENT_ID",
+    clientSecretKey: "GOOGLE_CLIENT_SECRET",
+    scopesKey: "GOOGLE_YOUTUBE_OAUTH_SCOPES",
+    scopes: ["https://www.googleapis.com/auth/youtube.readonly", "https://www.googleapis.com/auth/yt-analytics.readonly"],
+    capabilities: ["YouTube channel", "Subscriber totals", "Video performance", "28-day analytics"],
+    caveat: "YouTube creator analytics uses Google OAuth. Google Ads is a separate connection that also requires an approved Ads developer token.",
+  },
   x: {
     label: "X",
     clientIdKey: "X_CLIENT_ID",
     clientSecretKey: "X_CLIENT_SECRET",
     scopesKey: "X_OAUTH_SCOPES",
     scopes: ["tweet.read", "users.read", "offline.access"],
-    capabilities: ["Creator profile", "Public metrics", "Post metadata"],
+    capabilities: ["Creator profile", "Follower totals", "Recent post performance"],
     caveat: "X Ads requires separate Ads API approval and OAuth 1.0a; organic account OAuth uses OAuth 2.0 with PKCE.",
   },
   threads: {
@@ -82,7 +94,7 @@ const PROVIDERS = Object.freeze({
     clientSecretKey: "THREADS_APP_SECRET",
     scopesKey: "THREADS_OAUTH_SCOPES",
     scopes: ["threads_basic", "threads_manage_insights"],
-    capabilities: ["Threads profile", "Content metadata", "Insights"],
+    capabilities: ["Threads profile", "Recent posts", "Post insights"],
     caveat: "Threads uses its own Meta developer product and callback even when the same business owns Instagram.",
   },
 });
@@ -260,6 +272,18 @@ function authorizeUrl(config, state, verifier) {
       scope: config.scopes.join(" "),
       state,
     });
+  } else if (config.provider === "youtube") {
+    url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+    url.search = new URLSearchParams({
+      client_id: config.clientId,
+      redirect_uri: config.callbackUrl,
+      response_type: "code",
+      scope: config.scopes.join(" "),
+      access_type: "offline",
+      include_granted_scopes: "true",
+      prompt: "consent",
+      state,
+    });
   } else if (config.provider === "x") {
     url = new URL("https://x.com/i/oauth2/authorize");
     url.search = new URLSearchParams({
@@ -353,6 +377,7 @@ async function exchangeCode(config, code, verifier, fetchImpl) {
     const endpoints = {
       tiktok: "https://open.tiktokapis.com/v2/oauth/token/",
       snapchat: "https://accounts.snapchat.com/login/oauth2/access_token",
+      youtube: "https://oauth2.googleapis.com/token",
       x: "https://api.x.com/2/oauth2/token",
       threads: "https://graph.threads.net/oauth/access_token",
     };
@@ -389,12 +414,13 @@ async function exchangeCode(config, code, verifier, fetchImpl) {
 }
 
 async function refreshAccessToken(config, token, fetchImpl) {
-  if (!token.refreshToken || !["tiktok", "snapchat", "x"].includes(config.provider)) {
+  if (!token.refreshToken || !["tiktok", "snapchat", "youtube", "x"].includes(config.provider)) {
     throw new OAuthError(`${config.label} authorization has expired; reconnect the account`, 401);
   }
   const endpoints = {
     tiktok: "https://open.tiktokapis.com/v2/oauth/token/",
     snapchat: "https://accounts.snapchat.com/login/oauth2/access_token",
+    youtube: "https://oauth2.googleapis.com/token",
     x: "https://api.x.com/2/oauth2/token",
   };
   const values = config.provider === "tiktok" ? {
@@ -404,7 +430,7 @@ async function refreshAccessToken(config, token, fetchImpl) {
     refresh_token: token.refreshToken,
   } : {
     client_id: config.clientId,
-    client_secret: config.provider === "snapchat" ? config.clientSecret : undefined,
+    client_secret: ["snapchat", "youtube"].includes(config.provider) ? config.clientSecret : undefined,
     grant_type: "refresh_token",
     refresh_token: token.refreshToken,
   };
@@ -1107,11 +1133,179 @@ async function syncSnapchat(token, fetchImpl) {
   };
 }
 
+function apiDate(value) {
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 10) : "";
+}
+
+function youtubeReport(payload = {}) {
+  const headers = (Array.isArray(payload.columnHeaders) ? payload.columnHeaders : []).map((item) => text(item?.name, 80));
+  const values = Array.isArray(payload.rows?.[0]) ? payload.rows[0] : [];
+  const row = Object.fromEntries(headers.map((name, index) => [name, nonNegativeNumber(values[index])]));
+  return {
+    views: Math.round(row.views || 0),
+    estimatedMinutesWatched: Math.round(row.estimatedMinutesWatched || 0),
+    averageViewDuration: Math.round(row.averageViewDuration || 0),
+    subscribersGained: Math.round(row.subscribersGained || 0),
+    subscribersLost: Math.round(row.subscribersLost || 0),
+    likes: Math.round(row.likes || 0),
+    comments: Math.round(row.comments || 0),
+    shares: Math.round(row.shares || 0),
+  };
+}
+
+async function syncYouTube(token, fetchImpl, nowValue = Date.now()) {
+  const authorization = { authorization: `Bearer ${token.accessToken}` };
+  const channelsUrl = new URL("https://www.googleapis.com/youtube/v3/channels");
+  channelsUrl.search = new URLSearchParams({ part: "snippet,statistics,contentDetails", mine: "true", maxResults: "10" });
+  const channelPayload = await platformRequest(fetchImpl, channelsUrl, { headers: authorization });
+  const channel = (Array.isArray(channelPayload.items) ? channelPayload.items : [])[0];
+  if (!channel?.id) throw new OAuthError("Google did not return a YouTube channel for this account", 409);
+
+  const issues = [];
+  const uploadsPlaylistId = text(channel.contentDetails?.relatedPlaylists?.uploads, 160);
+  let playlistItems = [];
+  if (uploadsPlaylistId) {
+    try {
+      const playlistUrl = new URL("https://www.googleapis.com/youtube/v3/playlistItems");
+      playlistUrl.search = new URLSearchParams({
+        part: "snippet,contentDetails,status",
+        playlistId: uploadsPlaylistId,
+        maxResults: String(MAX_YOUTUBE_VIDEOS),
+      });
+      const playlistPayload = await platformRequest(fetchImpl, playlistUrl, { headers: authorization });
+      playlistItems = (Array.isArray(playlistPayload.items) ? playlistPayload.items : []).slice(0, MAX_YOUTUBE_VIDEOS);
+    } catch (error) {
+      issues.push({ area: "recent_videos", message: text(error.message, 240) || "YouTube did not return the uploads playlist." });
+    }
+  }
+
+  const videoIds = playlistItems.map((item) => text(item?.contentDetails?.videoId || item?.snippet?.resourceId?.videoId, 80)).filter(Boolean);
+  let videoDetails = new Map();
+  if (videoIds.length) {
+    try {
+      const videosUrl = new URL("https://www.googleapis.com/youtube/v3/videos");
+      videosUrl.search = new URLSearchParams({ part: "snippet,statistics,contentDetails,status", id: videoIds.join(","), maxResults: String(MAX_YOUTUBE_VIDEOS) });
+      const videosPayload = await platformRequest(fetchImpl, videosUrl, { headers: authorization });
+      videoDetails = new Map((Array.isArray(videosPayload.items) ? videosPayload.items : []).map((item) => [text(item?.id, 80), item]));
+    } catch (error) {
+      issues.push({ area: "video_statistics", message: text(error.message, 240) || "YouTube video statistics were unavailable." });
+    }
+  }
+
+  const recentVideos = videoIds.map((id) => {
+    const item = videoDetails.get(id) || playlistItems.find((entry) => text(entry?.contentDetails?.videoId || entry?.snippet?.resourceId?.videoId, 80) === id) || {};
+    const snippet = item.snippet || {};
+    const statistics = item.statistics || {};
+    return {
+      id,
+      title: text(snippet.title, 180) || "Untitled YouTube video",
+      description: text(snippet.description, 240),
+      shareUrl: `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`,
+      thumbnailUrl: safeHttpsUrl(snippet.thumbnails?.high?.url || snippet.thumbnails?.medium?.url, "ytimg.com"),
+      createdAt: snippet.publishedAt || item.contentDetails?.videoPublishedAt || null,
+      duration: text(item.contentDetails?.duration, 40),
+      privacyStatus: text(item.status?.privacyStatus, 40),
+      views: Math.round(nonNegativeNumber(statistics.viewCount)),
+      likes: Math.round(nonNegativeNumber(statistics.likeCount)),
+      comments: Math.round(nonNegativeNumber(statistics.commentCount)),
+      shares: 0,
+    };
+  });
+
+  const endDate = apiDate(nowValue - 86400000);
+  const startDate = apiDate(nowValue - (28 * 86400000));
+  let analytics28d = { period: "last_28_complete_days", startDate, endDate, ...youtubeReport() };
+  try {
+    const analyticsUrl = new URL("https://youtubeanalytics.googleapis.com/v2/reports");
+    analyticsUrl.search = new URLSearchParams({
+      ids: "channel==MINE",
+      startDate,
+      endDate,
+      metrics: "views,estimatedMinutesWatched,averageViewDuration,subscribersGained,subscribersLost,likes,comments,shares",
+    });
+    analytics28d = { period: "last_28_complete_days", startDate, endDate, ...youtubeReport(await platformRequest(fetchImpl, analyticsUrl, { headers: authorization })) };
+  } catch (error) {
+    issues.push({ area: "channel_analytics", message: text(error.message, 240) || "YouTube Analytics did not return the 28-day report." });
+  }
+
+  const stats = channel.statistics || {};
+  const followers = stats.hiddenSubscriberCount ? 0 : Math.round(nonNegativeNumber(stats.subscriberCount));
+  const totalRecentViews = recentVideos.reduce((sum, video) => sum + video.views, 0);
+  const totalRecentInteractions = recentVideos.reduce((sum, video) => sum + video.likes + video.comments, 0);
+  const sortedViews = recentVideos.map((video) => video.views).sort((first, second) => first - second);
+  const middle = Math.floor(sortedViews.length / 2);
+  return {
+    externalAccountId: channel.id,
+    publicData: {
+      profile: {
+        id: channel.id,
+        username: text(channel.snippet?.customUrl, 120),
+        name: text(channel.snippet?.title, 160) || "YouTube channel",
+        description: text(channel.snippet?.description, 500),
+        avatarUrl: safeHttpsUrl(channel.snippet?.thumbnails?.high?.url || channel.snippet?.thumbnails?.default?.url, "ggpht.com"),
+        country: text(channel.snippet?.country, 10),
+        followers,
+        hiddenSubscribers: Boolean(stats.hiddenSubscriberCount),
+        channelViews: Math.round(nonNegativeNumber(stats.viewCount)),
+        videos: Math.round(nonNegativeNumber(stats.videoCount)),
+      },
+      recentVideos,
+      analytics28d,
+      syncIssues: issues,
+    },
+    privateData: {},
+    metrics: {
+      totalFollowers: followers,
+      hiddenSubscribers: Boolean(stats.hiddenSubscriberCount),
+      channelViews: Math.round(nonNegativeNumber(stats.viewCount)),
+      videoCount: Math.round(nonNegativeNumber(stats.videoCount)),
+      recentVideoCount: recentVideos.length,
+      totalRecentViews,
+      averageViews: recentVideos.length ? Math.round(totalRecentViews / recentVideos.length) : 0,
+      medianViews: sortedViews.length ? Math.round(sortedViews.length % 2 ? sortedViews[middle] : (sortedViews[middle - 1] + sortedViews[middle]) / 2) : 0,
+      engagementRate: totalRecentViews ? Math.round((totalRecentInteractions / totalRecentViews) * 10000) / 100 : 0,
+      recentLikes: recentVideos.reduce((sum, video) => sum + video.likes, 0),
+      recentComments: recentVideos.reduce((sum, video) => sum + video.comments, 0),
+      analyticsViews28d: analytics28d.views,
+      watchMinutes28d: analytics28d.estimatedMinutesWatched,
+      subscribersGained28d: analytics28d.subscribersGained,
+      subscribersLost28d: analytics28d.subscribersLost,
+      latestVideoAt: recentVideos[0]?.createdAt || null,
+      performanceWindow: "latest_20_uploads_and_28_complete_days",
+    },
+  };
+}
+
 async function syncX(token, fetchImpl) {
   const payload = await platformRequest(fetchImpl, "https://api.x.com/2/users/me?user.fields=id,name,username,profile_image_url,public_metrics,verified", {
     headers: { authorization: `Bearer ${token.accessToken}` },
   });
   const user = payload.data || {};
+  const syncIssues = [];
+  let recentPosts = [];
+  if (user.id) {
+    try {
+      const postsUrl = new URL(`https://api.x.com/2/users/${encodeURIComponent(user.id)}/tweets`);
+      postsUrl.search = new URLSearchParams({ max_results: String(MAX_X_POSTS), exclude: "retweets", "tweet.fields": "created_at,public_metrics" });
+      const postsPayload = await platformRequest(fetchImpl, postsUrl, { headers: { authorization: `Bearer ${token.accessToken}` } });
+      recentPosts = (Array.isArray(postsPayload.data) ? postsPayload.data : []).slice(0, MAX_X_POSTS).map((post) => ({
+        id: text(post?.id, 80),
+        text: text(post?.text, 280),
+        permalink: user.username && post?.id ? `https://x.com/${encodeURIComponent(user.username)}/status/${encodeURIComponent(post.id)}` : "",
+        createdAt: post?.created_at || null,
+        impressions: Math.round(nonNegativeNumber(post?.public_metrics?.impression_count)),
+        likes: Math.round(nonNegativeNumber(post?.public_metrics?.like_count)),
+        replies: Math.round(nonNegativeNumber(post?.public_metrics?.reply_count)),
+        reposts: Math.round(nonNegativeNumber(post?.public_metrics?.retweet_count)),
+        quotes: Math.round(nonNegativeNumber(post?.public_metrics?.quote_count)),
+      })).filter((post) => post.id);
+    } catch (error) {
+      syncIssues.push({ area: "recent_posts", message: text(error.message, 240) || "X did not return recent post performance." });
+    }
+  }
+  const totalImpressions = recentPosts.reduce((sum, post) => sum + post.impressions, 0);
+  const totalInteractions = recentPosts.reduce((sum, post) => sum + post.likes + post.replies + post.reposts + post.quotes, 0);
   return {
     externalAccountId: user.id,
     publicData: { profile: {
@@ -1121,11 +1315,16 @@ async function syncX(token, fetchImpl) {
       profileImageUrl: user.profile_image_url,
       verified: Boolean(user.verified),
       metrics: user.public_metrics || {},
-    } },
+    }, recentPosts, syncIssues },
     privateData: {},
     metrics: {
       totalFollowers: Number(user.public_metrics?.followers_count) || 0,
-      averageViews: 0,
+      averageViews: recentPosts.length ? Math.round(totalImpressions / recentPosts.length) : 0,
+      recentPostCount: recentPosts.length,
+      recentPostImpressions: totalImpressions,
+      recentPostInteractions: totalInteractions,
+      postEngagementRate: totalImpressions ? Math.round((totalInteractions / totalImpressions) * 10000) / 100 : 0,
+      latestPostAt: recentPosts[0]?.createdAt || null,
     },
   };
 }
@@ -1134,6 +1333,58 @@ async function syncThreads(token, fetchImpl) {
   const profile = await platformRequest(fetchImpl, accessTokenUrl("https://graph.threads.net/v1.0/me", token.accessToken, {
     fields: "id,username,threads_profile_picture_url,threads_biography",
   }));
+  const syncIssues = [];
+  let recentPosts = [];
+  try {
+    const postsPayload = await platformRequest(fetchImpl, accessTokenUrl("https://graph.threads.net/v1.0/me/threads", token.accessToken, {
+      fields: "id,media_type,permalink,text,timestamp,shortcode,is_quote_post",
+      limit: String(MAX_THREADS_POSTS),
+    }));
+    recentPosts = (Array.isArray(postsPayload.data) ? postsPayload.data : []).slice(0, MAX_THREADS_POSTS).map((post) => ({
+      id: text(post?.id, 100),
+      text: text(post?.text, 500),
+      permalink: safeHttpsUrl(post?.permalink, "threads.net"),
+      mediaType: text(post?.media_type, 40),
+      createdAt: post?.timestamp || null,
+      isQuotePost: Boolean(post?.is_quote_post),
+      impressions: 0,
+      likes: 0,
+      replies: 0,
+      reposts: 0,
+      quotes: 0,
+    })).filter((post) => post.id);
+  } catch (error) {
+    syncIssues.push({ area: "recent_posts", message: text(error.message, 240) || "Threads did not return recent posts." });
+  }
+
+  if (recentPosts.length) {
+    let insightSuccesses = 0;
+    recentPosts = await Promise.all(recentPosts.map(async (post, index) => {
+      if (index >= 10) return post;
+      try {
+        const insightPayload = await platformRequest(fetchImpl, accessTokenUrl(`https://graph.threads.net/v1.0/${encodeURIComponent(post.id)}/insights`, token.accessToken, {
+          metric: "views,likes,replies,reposts,quotes,shares",
+        }));
+        const values = Object.fromEntries((Array.isArray(insightPayload.data) ? insightPayload.data : []).map((item) => [item?.name, nonNegativeNumber(item?.total_value?.value ?? item?.values?.[0]?.value)]));
+        insightSuccesses += 1;
+        return {
+          ...post,
+          impressions: Math.round(values.views || 0),
+          likes: Math.round(values.likes || 0),
+          replies: Math.round(values.replies || 0),
+          reposts: Math.round(values.reposts || 0),
+          quotes: Math.round(values.quotes || 0),
+          shares: Math.round(values.shares || 0),
+        };
+      } catch {
+        return post;
+      }
+    }));
+    if (!insightSuccesses) syncIssues.push({ area: "post_insights", message: "Threads returned post metadata but did not grant post insights for this connection." });
+  }
+
+  const totalImpressions = recentPosts.reduce((sum, post) => sum + post.impressions, 0);
+  const totalInteractions = recentPosts.reduce((sum, post) => sum + post.likes + post.replies + post.reposts + post.quotes + (post.shares || 0), 0);
   return {
     externalAccountId: profile.id,
     publicData: { profile: {
@@ -1141,16 +1392,25 @@ async function syncThreads(token, fetchImpl) {
       username: profile.username,
       profilePictureUrl: profile.threads_profile_picture_url,
       biography: profile.threads_biography,
-    } },
+    }, recentPosts, syncIssues },
     privateData: {},
-    metrics: { totalFollowers: 0, averageViews: 0 },
+    metrics: {
+      totalFollowers: 0,
+      averageViews: recentPosts.length ? Math.round(totalImpressions / recentPosts.length) : 0,
+      recentPostCount: recentPosts.length,
+      recentPostImpressions: totalImpressions,
+      recentPostInteractions: totalInteractions,
+      postEngagementRate: totalImpressions ? Math.round((totalInteractions / totalImpressions) * 10000) / 100 : 0,
+      latestPostAt: recentPosts[0]?.createdAt || null,
+    },
   };
 }
 
-async function synchronize(config, token, fetchImpl) {
+async function synchronize(config, token, fetchImpl, nowValue = Date.now()) {
   if (config.provider === "meta") return syncMeta(config, token, fetchImpl);
   if (config.provider === "tiktok") return syncTikTok(token, fetchImpl);
   if (config.provider === "snapchat") return syncSnapchat(token, fetchImpl);
+  if (config.provider === "youtube") return syncYouTube(token, fetchImpl, nowValue);
   if (config.provider === "x") return syncX(token, fetchImpl);
   return syncThreads(token, fetchImpl);
 }
@@ -1260,7 +1520,7 @@ export function createOAuthService({
     if (!code || !returnedState) throw new OAuthError("The platform did not return a valid authorization code");
     const stateRecord = readState(provider, session, request, returnedState);
     const token = await exchangeCode(providerConfig, code, stateRecord.verifier, fetchImpl);
-    const syncResult = await synchronize(providerConfig, token, fetchImpl);
+    const syncResult = await synchronize(providerConfig, token, fetchImpl, now());
     const storedToken = Array.isArray(syncResult.grantedScopes)
       ? { ...token, grantedScopes: syncResult.grantedScopes }
       : token;
@@ -1292,7 +1552,7 @@ export function createOAuthService({
   async function sync(provider, session) {
     const providerConfig = requireReady(provider);
     const { connection, token } = await connectedAuthorization(providerConfig, session);
-    const syncResult = await synchronize(providerConfig, token, fetchImpl);
+    const syncResult = await synchronize(providerConfig, token, fetchImpl, now());
     const storedToken = Array.isArray(syncResult.grantedScopes)
       ? { ...token, grantedScopes: syncResult.grantedScopes }
       : token;
