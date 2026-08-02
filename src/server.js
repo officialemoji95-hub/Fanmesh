@@ -21,7 +21,7 @@ import {
   verifySnapchatWebhookSignature,
 } from "./snapchat.js";
 
-const APP_VERSION = "0.18.1";
+const APP_VERSION = "0.18.2";
 const port = Number(process.env.PORT || 3000);
 const publicDirectory = fileURLToPath(new URL("../public", import.meta.url));
 const maxBodyBytes = 2 * 1024 * 1024;
