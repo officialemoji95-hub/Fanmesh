@@ -585,6 +585,10 @@ main > footer nav { margin-left: auto; display: flex; align-items: center; gap: 
 main > footer a { color: var(--purple); font-weight: 700; }
 .toast { position: fixed; z-index: 20; right: 24px; bottom: 24px; max-width: 330px; padding: 12px 15px; color: #fff; background: #242529; border: 1px solid #3a3b40; border-radius: 8px; box-shadow: 0 12px 35px rgba(0,0,0,.18); font-size: 11px; opacity: 0; transform: translateY(10px); pointer-events: none; transition: .22s; }
 .toast.show { opacity: 1; transform: translateY(0); }
+.release-form-feedback { min-height: 17px; margin: -2px 0 0; color: #77777e; font-size: 9px; font-weight: 650; line-height: 1.45; }
+.release-form-feedback.error { color: var(--coral); }
+.release-form-feedback.pending { color: #6c5fc7; }
+.release-form-feedback.success { color: var(--green); }
 [hidden] { display: none !important; }
 body.auth-open { overflow: hidden; }
 .auth-gate { position: fixed; z-index: 50; inset: 0; display: grid; place-items: center; padding: 22px; background: radial-gradient(circle at 70% 10%, rgba(117,99,237,.2), transparent 36%), #18191c; }

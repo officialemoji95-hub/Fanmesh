@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="FanMesh unifies consented fan relationships and turns them into useful audience intelligence.">
     <title>FanMesh — Own the relationship</title>
-    <link rel="stylesheet" href="/styles.css?v=0.18.0">
+    <link rel="stylesheet" href="/styles.css?v=0.18.1">
   </head>
   <body>
     <section class="auth-gate" id="auth-gate" aria-labelledby="auth-title" hidden>
@@ -408,7 +408,7 @@
               <span class="status good">Organic first</span>
             </div>
             <p class="panel-copy">Choose a current Content Mesh idea. FanMesh will preserve its authorized baseline, build native platform instructions, size the consented direct cohort, and schedule honest 24-hour and 72-hour checkpoints. Creating a plan publishes nothing and sends nothing.</p>
-            <form id="release-plan-form">
+            <form id="release-plan-form" novalidate>
               <label>Content idea<select name="meshId" id="release-mesh-select" required><option value="">Syncing Content Mesh…</option></select></label>
               <label>Release title<input name="title" maxlength="120" placeholder="Name this release or recovery push"></label>
               <div class="release-form-row">
@@ -430,6 +430,7 @@
               </fieldset>
               <label>Measurement holdout<select name="holdoutPercent"><option value="0">No direct holdout</option><option value="5">5% holdout</option><option value="10" selected>10% holdout</option><option value="15">15% holdout</option></select></label>
               <label class="activation-confirm"><input name="confirmedOwnedContent" type="checkbox" required> I control this content and the selected creator accounts.</label>
+              <p class="release-form-feedback" id="release-form-feedback" role="status" aria-live="polite"></p>
               <button class="button primary" type="submit">Build release plan ↗</button>
             </form>
           </article>
@@ -521,6 +522,6 @@
       </main>
     </div>
     <div class="toast" role="status" aria-live="polite"></div>
-    <script src="/app.js?v=0.18.0" type="module"></script>
+    <script src="/app.js?v=0.18.1" type="module"></script>
   </body>
 </html>

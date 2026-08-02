@@ -928,8 +928,11 @@ function renderReleaseBuilder(preferredId = pendingReleaseMeshId) {
   if (changed) {
     form.elements.title.value = item?.title || "";
     form.elements.confirmedOwnedContent.checked = false;
+    setReleaseFormFeedback();
   }
   if (!form.elements.releaseAt.value) form.elements.releaseAt.value = localDateTimeValue();
+  form.elements.releaseAt.min = localDateTimeValue(new Date(Date.now() - (5 * 60000)));
+  form.elements.releaseAt.max = localDateTimeValue(new Date(Date.now() + (180 * 86400000)));
   const available = new Set([...(item?.platforms || []), ...(item?.missingPlatforms || [])]);
   [...form.querySelectorAll('input[name="platforms"]')].forEach((field) => {
     field.disabled = !available.has(field.value);
@@ -1043,6 +1046,37 @@ function releasePlanInput(form) {
     holdoutPercent: data.get("holdoutPercent"),
     confirmedOwnedContent: data.get("confirmedOwnedContent") === "on",
   };
+}
+
+function setReleaseFormFeedback(message = "", state = "") {
+  const feedback = document.querySelector("#release-form-feedback");
+  if (!feedback) return;
+  feedback.textContent = message;
+  feedback.className = `release-form-feedback${state ? ` ${state}` : ""}`;
+}
+
+function validateReleasePlanInput(input) {
+  if (!input.meshId) return { field: "meshId", message: "Choose a synchronized content idea first." };
+  if (!String(input.title || "").trim()) return { field: "title", message: "Give this release plan a title." };
+  const releaseAt = Date.parse(input.releaseAt || "");
+  const now = Date.now();
+  if (!Number.isFinite(releaseAt)) return { field: "releaseAt", message: "Choose a valid release date and time." };
+  if (releaseAt < now - (5 * 60000)) return { field: "releaseAt", message: "That release time has passed. Choose a current or future time." };
+  if (releaseAt > now + (180 * 86400000)) return { field: "releaseAt", message: "Choose a release time within the next 180 days." };
+  if (!input.platforms.length) return { field: "platforms", message: "Select at least one connected creator platform." };
+  if (!input.confirmedOwnedContent) {
+    return {
+      field: "confirmedOwnedContent",
+      message: "Check the ownership confirmation so FanMesh knows these are your content and creator accounts.",
+    };
+  }
+  return null;
+}
+
+function focusReleaseField(form, name) {
+  const field = [...form.querySelectorAll(`[name="${name}"]`)].find((item) => !item.disabled);
+  field?.focus();
+  field?.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
 function releaseCheckpointInput(form) {
@@ -1562,15 +1596,24 @@ document.querySelector("#release-plan-form").addEventListener("change", (event) 
 document.querySelector("#release-plan-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
+  const input = releasePlanInput(form);
+  const validation = validateReleasePlanInput(input);
+  if (validation) {
+    setReleaseFormFeedback(validation.message, "error");
+    showToast(validation.message);
+    focusReleaseField(form, validation.field);
+    return;
+  }
   const button = form.querySelector('button[type="submit"]');
   const original = button.textContent;
   button.disabled = true;
   button.textContent = "Building command plan…";
+  setReleaseFormFeedback("Building your private command plan. Nothing is being published or sent.", "pending");
   try {
     const response = await fetch("/api/v1/releases/plan", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(releasePlanInput(form)),
+      body: JSON.stringify(input),
     });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error?.message || "Release plan could not be created");
@@ -1579,8 +1622,10 @@ document.querySelector("#release-plan-form").addEventListener("submit", async (e
     renderReleaseCommand(plan);
     renderReleaseHistory();
     form.elements.confirmedOwnedContent.checked = false;
+    setReleaseFormFeedback("Release plan saved below. Nothing was published or sent.", "success");
     showToast("Release plan saved. Nothing was published or sent.");
   } catch (error) {
+    setReleaseFormFeedback(error.message, "error");
     showToast(error.message);
   } finally {
     button.disabled = false;
