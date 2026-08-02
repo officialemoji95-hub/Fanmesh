@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="FanMesh unifies consented fan relationships and turns them into useful audience intelligence.">
     <title>FanMesh — Own the relationship</title>
-    <link rel="stylesheet" href="/styles.css?v=0.17.0">
+    <link rel="stylesheet" href="/styles.css?v=0.18.0">
   </head>
   <body>
     <section class="auth-gate" id="auth-gate" aria-labelledby="auth-title" hidden>
@@ -39,6 +39,7 @@
           <a href="#/outreach" data-route="outreach"><span class="nav-icon">↗</span> Outreach</a>
           <a href="#/organic" data-route="organic"><span class="nav-icon">◌</span> Organic Pulse</a>
           <a href="#/reach-lab" data-route="reach-lab"><span class="nav-icon">⌁</span> Reach Lab</a>
+          <a href="#/release" data-route="release"><span class="nav-icon">▶</span> Release</a>
           <a href="#/connections" data-route="connections"><span class="nav-icon">⌘</span> Connections</a>
           <a href="#/developer" data-route="developer"><span class="nav-icon">{ }</span> Developer</a>
         </nav>
@@ -400,6 +401,52 @@
           <p class="organic-method" id="reach-lab-method">Waiting for authorized organic post signals.</p>
         </section>
 
+        <section class="release-grid" id="release-command" data-page="release" hidden>
+          <article class="panel release-builder">
+            <div class="panel-heading">
+              <div><p class="eyebrow">Release Command</p><h2>Turn one idea into a measured release</h2></div>
+              <span class="status good">Organic first</span>
+            </div>
+            <p class="panel-copy">Choose a current Content Mesh idea. FanMesh will preserve its authorized baseline, build native platform instructions, size the consented direct cohort, and schedule honest 24-hour and 72-hour checkpoints. Creating a plan publishes nothing and sends nothing.</p>
+            <form id="release-plan-form">
+              <label>Content idea<select name="meshId" id="release-mesh-select" required><option value="">Syncing Content Mesh…</option></select></label>
+              <label>Release title<input name="title" maxlength="120" placeholder="Name this release or recovery push"></label>
+              <div class="release-form-row">
+                <label>Release time<input name="releaseAt" type="datetime-local" required></label>
+                <label>Primary objective<select name="objective"><option value="discovery">Discovery</option><option value="engagement">Engagement</option><option value="streams">Streams / clicks</option><option value="sales">Sales</option></select></label>
+              </div>
+              <fieldset id="release-platform-picker">
+                <legend>Native platform versions</legend>
+                <label class="check"><input type="checkbox" name="platforms" value="instagram"> Instagram</label>
+                <label class="check"><input type="checkbox" name="platforms" value="tiktok"> TikTok</label>
+                <label class="check"><input type="checkbox" name="platforms" value="youtube"> YouTube</label>
+                <label class="check"><input type="checkbox" name="platforms" value="x"> X</label>
+                <label class="check"><input type="checkbox" name="platforms" value="threads"> Threads</label>
+              </fieldset>
+              <fieldset>
+                <legend>Optional consented alert</legend>
+                <label class="check"><input type="checkbox" name="channels" value="email" checked> Email</label>
+                <label class="check"><input type="checkbox" name="channels" value="sms"> SMS</label>
+              </fieldset>
+              <label>Measurement holdout<select name="holdoutPercent"><option value="0">No direct holdout</option><option value="5">5% holdout</option><option value="10" selected>10% holdout</option><option value="15">15% holdout</option></select></label>
+              <label class="activation-confirm"><input name="confirmedOwnedContent" type="checkbox" required> I control this content and the selected creator accounts.</label>
+              <button class="button primary" type="submit">Build release plan ↗</button>
+            </form>
+          </article>
+          <article class="panel release-command-panel" id="release-command-result" aria-live="polite">
+            <div class="empty-sequence"><span class="sequence-icon">▶</span><h3>Your command plan will appear here</h3><p>FanMesh will show exactly what is scheduled, what remains manual, and how the result will be judged.</p></div>
+          </article>
+        </section>
+
+        <section class="panel release-history" data-page="release" hidden>
+          <div class="panel-heading">
+            <div><p class="eyebrow">Learning loop</p><h2>Release history and next lesson</h2></div>
+            <span class="status" id="release-history-status">Loading plans</span>
+          </div>
+          <div class="release-plan-list" id="release-plan-list"><div class="skeleton"></div></div>
+          <p class="organic-method">Checkpoint totals must exclude paid distribution. Every comparison remains relative to that platform's own authorized baseline.</p>
+        </section>
+
         <section class="campaign-grid" id="campaign" data-page="outreach" hidden>
           <article class="panel campaign-builder">
             <div class="panel-heading">
@@ -456,6 +503,7 @@
             <article><span>Connections</span><strong>Official provider catalog</strong><code>GET /api/v1/connections</code><p>Configured, connected, and available capabilities without returning OAuth credentials.</p></article>
             <article><span>Organic</span><strong>Recovery opportunities</strong><code>GET /api/v1/organic/posts</code><p>Recent authorized post signals ranked with transparent opportunity components.</p></article>
             <article><span>Reach Lab</span><strong>Cross-platform content mesh</strong><code>GET /api/v1/content-mesh</code><p>Matching content, own-platform benchmark indexes, and explainable organic recovery moves.</p></article>
+            <article><span>Release</span><strong>Plan, measure, learn</strong><code>POST /api/v1/releases/plan</code><p>Native release schedules, consent-safe cohort counts, and organic-only 24/72-hour checkpoints.</p></article>
             <article><span>Outreach</span><strong>Preview before delivery</strong><code>POST /api/v1/outreach/preview</code><p>Consent, provenance, holdout, and frequency-cap counts without exposing contact fields.</p></article>
           </div>
           <div class="developer-boundary"><strong>API boundary</strong><p>FanMesh never exposes stored platform tokens or raw delivery credentials. Every mutating operation rechecks the signed-in workspace and the relevant authorization.</p></div>
@@ -473,6 +521,6 @@
       </main>
     </div>
     <div class="toast" role="status" aria-live="polite"></div>
-    <script src="/app.js?v=0.17.0" type="module"></script>
+    <script src="/app.js?v=0.18.0" type="module"></script>
   </body>
 </html>
