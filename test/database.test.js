@@ -129,6 +129,57 @@ test("recent activation listing returns only fan-alert plans", async () => {
   assert.equal(activations[0].title, "Post");
 });
 
+test("release plan listing returns only private release command records", async () => {
+  function response(payload, status = 200) {
+    return { ok: status >= 200 && status < 300, status, async text() { return payload === null ? "" : JSON.stringify(payload); } };
+  }
+  const store = createWorkspaceStore({
+    environment: { SUPABASE_URL: "https://project.supabase.co", SUPABASE_PUBLISHABLE_KEY: "public-key" },
+    async fetchImpl(url) {
+      if (url.includes("workspace_members")) return response([{ workspace_id: "workspace-1", role: "owner" }]);
+      if (url.includes("/workspaces?")) return response([{ id: "workspace-1", name: "Creator workspace", slug: "creator" }]);
+      if (url.includes("/social_experiments?")) return response([
+        { id: "release-row", status: "active", created_at: "2026-08-02T10:00:00.000Z", updated_at: "2026-08-03T10:00:00.000Z", plan: { id: "release_1", kind: "release_plan_v1", title: "Single launch" } },
+        { id: "activation-row", status: "draft", created_at: "2026-08-01T10:00:00.000Z", plan: { id: "act_1", kind: "fan_activation_v1", title: "Alert" } },
+      ]);
+      throw new Error(`Unexpected request: ${url}`);
+    },
+  });
+  const releases = await store.listReleasePlans({ id: "user-1" }, "user-token", 5);
+  assert.equal(releases.length, 1);
+  assert.equal(releases[0].databaseId, "release-row");
+  assert.equal(releases[0].status, "active");
+  assert.equal(releases[0].updatedAt, "2026-08-03T10:00:00.000Z");
+});
+
+test("release checkpoint persistence is workspace-scoped and keeps the plan status", async () => {
+  function response(payload, status = 200) {
+    return { ok: status >= 200 && status < 300, status, async text() { return payload === null ? "" : JSON.stringify(payload); } };
+  }
+  const calls = [];
+  const storedPlan = { id: "release_1", kind: "release_plan_v1", title: "Single launch", status: "draft", platforms: [] };
+  const store = createWorkspaceStore({
+    environment: { SUPABASE_URL: "https://project.supabase.co", SUPABASE_PUBLISHABLE_KEY: "public-key" },
+    async fetchImpl(url, options = {}) {
+      calls.push({ url, options });
+      if (url.includes("workspace_members")) return response([{ workspace_id: "workspace-1", role: "owner" }]);
+      if (url.includes("/workspaces?")) return response([{ id: "workspace-1", name: "Creator workspace", slug: "creator" }]);
+      if (url.includes("/social_experiments?") && options.method === "PATCH") {
+        return response([{ id: "release-row", status: options.body.includes('"status":"completed"') ? "completed" : "draft", plan: JSON.parse(options.body).plan, created_at: "2026-08-02T10:00:00.000Z", updated_at: "2026-08-05T10:00:00.000Z" }]);
+      }
+      if (url.includes("/social_experiments?")) return response([{ id: "release-row", status: "draft", plan: storedPlan, created_at: "2026-08-02T10:00:00.000Z" }]);
+      throw new Error(`Unexpected request: ${options.method || "GET"} ${url}`);
+    },
+  });
+  const found = await store.getReleasePlan({ id: "user-1" }, "user-token", "release-row");
+  assert.equal(found.databaseId, "release-row");
+  const updated = await store.updateReleasePlan({ id: "user-1" }, "user-token", "release-row", { ...storedPlan, status: "completed", checkpoints: [{ checkpoint: "72h" }] });
+  assert.equal(updated.status, "completed");
+  const patchCall = calls.find((call) => call.options.method === "PATCH");
+  assert.match(patchCall.url, /workspace_id=eq\.workspace-1/);
+  assert.equal(JSON.parse(patchCall.options.body).plan.kind, "release_plan_v1");
+});
+
 test("Meta connection summaries expose aggregate assets without credentials or lead identities", () => {
   const state = publicConnectionState({
     status: "connected",
