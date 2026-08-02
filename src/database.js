@@ -552,6 +552,64 @@ export function createWorkspaceStore({ environment = process.env, fetchImpl = gl
       }));
   }
 
+  async function listReleasePlans(user, token, limit = 10) {
+    const workspace = await workspaceFor(user, token);
+    const rows = await request(
+      `/rest/v1/social_experiments?select=id,status,plan,created_at,updated_at&workspace_id=eq.${queryValue(workspace.id)}&order=created_at.desc&limit=${Math.min(100, Math.max(1, limit * 4))}`,
+      token,
+    );
+    return (rows || [])
+      .filter((row) => row.plan?.kind === "release_plan_v1")
+      .slice(0, limit)
+      .map((row) => ({
+        ...row.plan,
+        databaseId: row.id,
+        status: row.status,
+        createdAt: row.created_at || row.plan.createdAt,
+        updatedAt: row.updated_at || row.plan.updatedAt || row.created_at,
+      }));
+  }
+
+  async function getReleasePlan(user, token, databaseId) {
+    const workspace = await workspaceFor(user, token);
+    const rows = await request(
+      `/rest/v1/social_experiments?select=id,status,plan,created_at,updated_at&id=eq.${queryValue(databaseId)}&workspace_id=eq.${queryValue(workspace.id)}&limit=1`,
+      token,
+    );
+    const row = rows?.[0];
+    if (!row || row.plan?.kind !== "release_plan_v1") throw new DatabaseError("Release plan not found", 404);
+    return {
+      ...row.plan,
+      databaseId: row.id,
+      status: row.status,
+      createdAt: row.created_at || row.plan.createdAt,
+      updatedAt: row.updated_at || row.plan.updatedAt || row.created_at,
+    };
+  }
+
+  async function updateReleasePlan(user, token, databaseId, plan) {
+    const workspace = await workspaceFor(user, token);
+    const status = ["draft", "active", "completed", "cancelled"].includes(plan.status) ? plan.status : "draft";
+    const rows = await request(
+      `/rest/v1/social_experiments?id=eq.${queryValue(databaseId)}&workspace_id=eq.${queryValue(workspace.id)}&select=id,status,plan,created_at,updated_at`,
+      token,
+      {
+        method: "PATCH",
+        prefer: "return=representation",
+        body: { status, plan, updated_at: new Date().toISOString() },
+      },
+    );
+    const row = rows?.[0];
+    if (!row || row.plan?.kind !== "release_plan_v1") throw new DatabaseError("Release plan not found", 404);
+    return {
+      ...row.plan,
+      databaseId: row.id,
+      status: row.status,
+      createdAt: row.created_at || row.plan.createdAt,
+      updatedAt: row.updated_at || row.plan.updatedAt || row.created_at,
+    };
+  }
+
   async function getOutreachCandidates(user, token, { frequencyHours = 48 } = {}) {
     const workspace = await workspaceFor(user, token);
     const workspaceId = queryValue(workspace.id);
@@ -1166,14 +1224,17 @@ export function createWorkspaceStore({ environment = process.env, fetchImpl = gl
     getDashboard,
     getOutreachCandidates,
     getProviderWebhook,
+    getReleasePlan,
     getSourceConnection,
     listActivations,
     listOutreachCampaigns,
+    listReleasePlans,
     createOutreachCampaign,
     finishOutreachCampaign,
     saveExperiment,
     saveProviderWebhook,
     saveSourceConnection,
+    updateReleasePlan,
     revokeSourceConnectionsByExternalAccount,
     workspaceFor,
   });

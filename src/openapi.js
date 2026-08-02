@@ -2,8 +2,8 @@ export const openApiDocument = {
   openapi: "3.1.0",
   info: {
     title: "FanMesh API",
-    version: "0.16.0",
-    description: "Audience intelligence API for consented fan relationships.",
+    version: "0.18.0",
+    description: "Creator-owned audience intelligence, release orchestration, and consented activation API.",
   },
   servers: [{ url: "/api/v1" }],
   components: {
@@ -257,6 +257,70 @@ export const openApiDocument = {
         responses: {
           200: { description: "Cross-platform content groups, per-platform benchmark indexes, and native recovery recommendations with paid delivery excluded" },
           401: { description: "Sign-in required" },
+        },
+      },
+    },
+    "/releases": {
+      get: {
+        summary: "List private release plans and their 24-hour or 72-hour learning state",
+        security: [{ creatorSession: [] }],
+        parameters: [{ name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 25 } }],
+        responses: {
+          200: { description: "Release plans without contact fields" },
+          401: { description: "Sign-in required" },
+        },
+      },
+    },
+    "/releases/plan": {
+      post: {
+        summary: "Turn a current Content Mesh idea into an explainable cross-platform release plan",
+        security: [{ creatorSession: [] }],
+        requestBody: { required: true, content: { "application/json": { schema: {
+          type: "object",
+          required: ["meshId", "releaseAt", "platforms", "confirmedOwnedContent"],
+          properties: {
+            meshId: { type: "string", description: "Content group ID returned by GET /content-mesh" },
+            title: { type: "string", maxLength: 120 },
+            releaseAt: { type: "string", format: "date-time" },
+            objective: { type: "string", enum: ["discovery", "engagement", "streams", "sales"] },
+            platforms: { type: "array", minItems: 1, items: { type: "string", enum: ["instagram", "tiktok", "youtube", "x", "threads"] } },
+            channels: { type: "array", items: { type: "string", enum: ["email", "sms"] } },
+            holdoutPercent: { type: "number", minimum: 0, maximum: 25 },
+            confirmedOwnedContent: { type: "boolean", const: true },
+          },
+        } } } },
+        responses: {
+          201: { description: "Persisted release plan; nothing published or sent" },
+          400: { description: "Invalid schedule, platform, or ownership confirmation" },
+          404: { description: "Content group not present in the latest authorized sync" },
+        },
+      },
+    },
+    "/releases/{releaseId}/checkpoints": {
+      post: {
+        summary: "Record an organic-only 24-hour or 72-hour release checkpoint and update the learning recommendation",
+        security: [{ creatorSession: [] }],
+        parameters: [{ name: "releaseId", in: "path", required: true, schema: { type: "string" } }],
+        requestBody: { required: true, content: { "application/json": { schema: {
+          type: "object",
+          required: ["checkpoint", "metrics", "confirmedOrganicOnly"],
+          properties: {
+            checkpoint: { type: "string", enum: ["24h", "72h"] },
+            metrics: { type: "array", minItems: 1, items: { type: "object", required: ["platform", "currentReach"], properties: {
+              platform: { type: "string", enum: ["instagram", "tiktok", "youtube", "x", "threads"] },
+              currentReach: { type: "integer", minimum: 0 },
+              interactions: { type: "integer", minimum: 0 },
+              linkClicks: { type: "integer", minimum: 0 },
+              conversions: { type: "integer", minimum: 0 },
+            } } },
+            notes: { type: "string", maxLength: 500 },
+            confirmedOrganicOnly: { type: "boolean", const: true },
+          },
+        } } } },
+        responses: {
+          200: { description: "Updated release plan with explainable same-platform benchmark results" },
+          400: { description: "Invalid checkpoint or paid-delivery separation not confirmed" },
+          404: { description: "Release plan not found in this workspace" },
         },
       },
     },

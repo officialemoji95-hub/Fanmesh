@@ -11,6 +11,7 @@ import { createOAuthService } from "./oauth.js";
 import { buildContentMesh, buildOrganicQueue, prepareOrganicPulse } from "./organic.js";
 import { openApiDocument } from "./openapi.js";
 import { createOutreachService, normalizeOutreachInput, publicOutreachPlan, selectOutreachCohort } from "./outreach.js";
+import { applyReleaseCheckpoint, buildReleasePlan, publicReleasePlan } from "./release.js";
 import { getConnectionCatalog, planSocialExperiment, previewLeadImport, previewPlatformIdentityImport } from "./social.js";
 import { scoreAudience, scoreFan } from "./scoring.js";
 import {
@@ -20,7 +21,7 @@ import {
   verifySnapchatWebhookSignature,
 } from "./snapchat.js";
 
-const APP_VERSION = "0.17.0";
+const APP_VERSION = "0.18.0";
 const port = Number(process.env.PORT || 3000);
 const publicDirectory = fileURLToPath(new URL("../public", import.meta.url));
 const maxBodyBytes = 2 * 1024 * 1024;
@@ -590,6 +591,86 @@ export function createRequestHandler({
         return sendJson(response, 200, {
           data: buildContentMesh(state.connectionStatuses),
           meta: { demo: false, synced: true, paidIncluded: false },
+        }, cookieHeaders(session.cookies));
+      } catch (error) {
+        return sendError(response, error);
+      }
+    }
+
+    if (request.method === "GET" && pathname === "/api/v1/releases") {
+      try {
+        const limit = Math.min(25, Math.max(1, Number(searchParams.get("limit")) || 10));
+        if (!authService.config.configured) {
+          return sendJson(response, 200, { data: [], meta: { demo: true, persisted: false } });
+        }
+        const session = await authenticatedSession(request);
+        const plans = await workspaceStore.listReleasePlans(session.data.user, session.data.accessToken, limit);
+        return sendJson(response, 200, {
+          data: plans.map(publicReleasePlan),
+          meta: { demo: false, persisted: true, contactFieldsReturned: false },
+        }, cookieHeaders(session.cookies));
+      } catch (error) {
+        return sendError(response, error);
+      }
+    }
+
+    if (request.method === "POST" && pathname === "/api/v1/releases/plan") {
+      try {
+        if (!authService.config.configured) {
+          throw new DatabaseError("Sign in and sync an authorized creator platform before saving a release plan", 503);
+        }
+        const session = await authenticatedSession(request);
+        const input = await readJson(request);
+        const state = await workspaceStore.getDashboard(session.data.user, session.data.accessToken, 1);
+        const mesh = buildContentMesh(state.connectionStatuses);
+        const content = mesh.content.find((item) => item.id === input.meshId);
+        if (!content) {
+          const error = new Error("That content idea is no longer available. Sync the connected platforms and try again");
+          error.statusCode = 404;
+          throw error;
+        }
+        const eligibility = await workspaceStore.getActivationEligibility(session.data.user, session.data.accessToken);
+        const plan = buildReleasePlan(content, input, eligibility);
+        const saved = await workspaceStore.saveExperiment(session.data.user, session.data.accessToken, plan);
+        return sendJson(response, 201, {
+          data: publicReleasePlan({ ...saved, status: "draft", persistenceStatus: "saved" }),
+          meta: {
+            demo: false,
+            persisted: true,
+            messagesSent: 0,
+            platformPostsPublished: 0,
+            paidIncluded: false,
+          },
+        }, cookieHeaders(session.cookies));
+      } catch (error) {
+        return sendError(response, error);
+      }
+    }
+
+    const releaseCheckpointMatch = pathname.match(/^\/api\/v1\/releases\/([^/]+)\/checkpoints$/);
+    if (request.method === "POST" && releaseCheckpointMatch) {
+      try {
+        if (!authService.config.configured) throw new DatabaseError("Sign in before recording a release checkpoint", 503);
+        const databaseId = decodeURIComponent(releaseCheckpointMatch[1]);
+        if (!/^[a-zA-Z0-9-]{1,80}$/.test(databaseId)) {
+          const error = new Error("Release plan identifier is invalid");
+          error.statusCode = 400;
+          throw error;
+        }
+        const session = await authenticatedSession(request);
+        const existing = await workspaceStore.getReleasePlan(session.data.user, session.data.accessToken, databaseId);
+        const { databaseId: ignoredDatabaseId, ...storedPlan } = existing;
+        void ignoredDatabaseId;
+        const updated = applyReleaseCheckpoint(storedPlan, await readJson(request));
+        const saved = await workspaceStore.updateReleasePlan(
+          session.data.user,
+          session.data.accessToken,
+          databaseId,
+          updated,
+        );
+        return sendJson(response, 200, {
+          data: publicReleasePlan(saved),
+          meta: { demo: false, persisted: true, paidIncluded: false, contactFieldsReturned: false },
         }, cookieHeaders(session.cookies));
       } catch (error) {
         return sendError(response, error);
