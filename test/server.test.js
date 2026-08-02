@@ -34,7 +34,7 @@ async function dispatch({ method = "GET", url = "/", body = "", headers = {}, ha
 test("health endpoint reports an operational service", async () => {
   const response = await dispatch({ url: "/api/health" });
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.18.1", database: "demo" });
+  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.18.2", database: "demo" });
 });
 
 test("public legal pages explain FanMesh data and platform rules", async () => {
@@ -57,6 +57,7 @@ test("workspace navigation separates each product area into a routed view", asyn
   assert.match(html, /Snapchat Business/i);
   assert.match(html, /Current focus/i);
   assert.match(html, /id="release-plan-form" novalidate/);
+  assert.match(html, /<input name="confirmedOwnedContent" type="checkbox"> I control this content and the selected creator accounts\./);
   assert.match(html, /id="release-form-feedback" role="status" aria-live="polite"/);
 });
 
