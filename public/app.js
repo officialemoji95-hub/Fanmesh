@@ -1593,9 +1593,7 @@ document.querySelector("#release-plan-form").addEventListener("change", (event) 
   renderReleaseBuilder(pendingReleaseMeshId);
 });
 
-document.querySelector("#release-plan-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const form = event.currentTarget;
+async function buildReleasePlan(form) {
   const input = releasePlanInput(form);
   const validation = validateReleasePlanInput(input);
   if (validation) {
@@ -1631,6 +1629,19 @@ document.querySelector("#release-plan-form").addEventListener("submit", async (e
     button.disabled = false;
     button.textContent = original;
   }
+}
+
+const releasePlanForm = document.querySelector("#release-plan-form");
+const releasePlanButton = releasePlanForm.querySelector('button[type="submit"]');
+
+releasePlanForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void buildReleasePlan(releasePlanForm);
+});
+
+releasePlanButton.addEventListener("click", (event) => {
+  event.preventDefault();
+  void buildReleasePlan(releasePlanForm);
 });
 
 document.addEventListener("submit", async (event) => {
