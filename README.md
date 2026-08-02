@@ -6,7 +6,7 @@ This repository contains a deployable proof of concept. Without Supabase configu
 
 ## What works now
 
-- Responsive routed workspace with focused Overview, Audience, Outreach, Organic Pulse, Connections, and Developer views
+- Responsive routed workspace with focused Overview, Audience, Outreach, Organic Pulse, Reach Lab, Release Command, Connections, and Developer views
 - Supabase email/password accounts with server-managed HTTP-only sessions
 - Private creator workspaces with PostgreSQL row-level security
 - Live workspace dashboard mode that starts at zero instead of showing invented audience data
@@ -29,7 +29,9 @@ This repository contains a deployable proof of concept. Without Supabase configu
 - Persisted fan-alert activations with exact email/SMS eligibility, platform-only reach reporting, attribution-ready links, message templates, and provider-readiness status
 - Consent-gated lead outreach across Meta Ads, TikTok Ads, Snapchat Ads, X Ads, Google/YouTube Ads, Threads Ads, and authorized imports
 - Live Resend email and Twilio SMS adapters with explicit launch confirmation, a 48-hour frequency cap, holdouts, safe delivery receipts, and no contact fields returned to the browser
-- Organic Pulse queue that ranks synced Instagram/TikTok posts with an explainable recovery-opportunity score, captures a pre-ad baseline, and prepares native plus consented-direct follow-up actions
+- Organic Pulse queue that ranks synced Instagram, TikTok, YouTube, X, and Threads posts with an explainable recovery-opportunity score, captures a pre-ad baseline, and prepares native plus consented-direct follow-up actions
+- Cross-platform Reach Lab that recognizes matching authorized Instagram, TikTok, YouTube, X, and Threads content and compares each version only against its own platform baseline
+- Persisted Release Command plans with native platform guidance, consent-sized direct cohorts, measurement holdouts, command timelines, and organic-only 24/72-hour learning checkpoints
 - OpenAPI document at `/api/v1/openapi.json`
 - Render Blueprint and health check
 - Node.js tests with no third-party runtime dependencies
@@ -94,7 +96,7 @@ Every score includes its component points and strongest signals. Sensitive trait
 
 ## The production direction
 
-Accounts, private workspaces, consented lead imports, official platform-download ingestion, Organic Pulse, source-filtered lead outreach, routed workspace views, and the multi-provider OAuth foundation are implemented. Meta established the first end-to-end provider lane; Snapchat Business now reports authorized campaigns, delivery hierarchy, lifetime performance, Lead Generation Form inventory, and verified live lead webhooks. Meta measures authorized Instagram post health; automatic Instant Form retrieval remains available only when Meta grants the required app and Page permissions. Historical Snapchat submissions still require an official export because Snap's documented live delivery path begins when a form webhook is enabled. Email and SMS launch when Resend and Twilio credentials are configured. See [docs/LEAD-OUTREACH.md](docs/LEAD-OUTREACH.md), [docs/ORGANIC-PULSE.md](docs/ORGANIC-PULSE.md), [docs/ACTIVATION.md](docs/ACTIVATION.md), [docs/OAUTH-CONNECTIONS.md](docs/OAUTH-CONNECTIONS.md), [docs/SOCIAL-PHASE-1.md](docs/SOCIAL-PHASE-1.md), [docs/AUDIENCE-IMPORT.md](docs/AUDIENCE-IMPORT.md), [docs/AUTH-AND-SUPABASE.md](docs/AUTH-AND-SUPABASE.md), [docs/PRODUCT.md](docs/PRODUCT.md), [docs/API.md](docs/API.md), and [docs/SECURITY.md](docs/SECURITY.md).
+Accounts, private workspaces, consented lead imports, official platform-download ingestion, Organic Pulse, cross-platform Reach Lab, Release Command learning loops, source-filtered lead outreach, routed workspace views, and the multi-provider OAuth foundation are implemented. Meta established the first end-to-end provider lane; Snapchat Business now reports authorized campaigns, delivery hierarchy, lifetime performance, Lead Generation Form inventory, and verified live lead webhooks. Meta measures authorized Instagram post health; automatic Instant Form retrieval remains available only when Meta grants the required app and Page permissions. Historical Snapchat submissions still require an official export because Snap's documented live delivery path begins when a form webhook is enabled. Email and SMS launch when Resend and Twilio credentials are configured. See [docs/RELEASE-COMMAND.md](docs/RELEASE-COMMAND.md), [docs/LEAD-OUTREACH.md](docs/LEAD-OUTREACH.md), [docs/ORGANIC-PULSE.md](docs/ORGANIC-PULSE.md), [docs/ACTIVATION.md](docs/ACTIVATION.md), [docs/OAUTH-CONNECTIONS.md](docs/OAUTH-CONNECTIONS.md), [docs/SOCIAL-PHASE-1.md](docs/SOCIAL-PHASE-1.md), [docs/AUDIENCE-IMPORT.md](docs/AUDIENCE-IMPORT.md), [docs/AUTH-AND-SUPABASE.md](docs/AUTH-AND-SUPABASE.md), [docs/PRODUCT.md](docs/PRODUCT.md), [docs/API.md](docs/API.md), and [docs/SECURITY.md](docs/SECURITY.md).
 
 ## Non-goals
 
