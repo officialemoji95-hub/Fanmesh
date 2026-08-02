@@ -1368,7 +1368,7 @@ document.addEventListener("click", async (event) => {
   const toastTrigger = event.target.closest("[data-toast]");
   if (toastTrigger) showToast(toastTrigger.dataset.toast);
 
-  const routeTrigger = event.target.closest("[data-route]");
+  const routeTrigger = event.target.closest("a[data-route], button[data-route]");
   if (routeTrigger) {
     event.preventDefault();
     navigateToRoute(routeTrigger.dataset.route);
