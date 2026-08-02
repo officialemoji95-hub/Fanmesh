@@ -18,6 +18,8 @@ FanMesh becomes the identity and intelligence layer between a creator and the pl
 4. **Activate** — recommend the right segment, channel, timing, creative angle, and frequency cap.
 5. **Learn** — attribute responses to a release or campaign and update recommendations without using sensitive traits.
 
+Release Command now implements that full loop for organic content. It converts a current Content Mesh group into native platform instructions, preserves each existing organic baseline, sizes the consented direct cohort, and turns 24-hour and 72-hour results into an explainable next action.
+
 ## First production milestone
 
 ### Creator workspace
@@ -41,6 +43,7 @@ FanMesh becomes the identity and intelligence layer between a creator and the pl
 - Email provider connection first; optional compliant SMS connection
 - Segment builder with exclusion rules and frequency caps
 - Release playbook with tracked links and conversion events
+- Cross-platform Release Command with native adaptations, organic baselines, holdouts, and 24/72-hour learning
 - Supported social publishing integrations where official APIs permit it
 
 ### Provider rollout
