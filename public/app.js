@@ -1075,8 +1075,12 @@ function validateReleasePlanInput(input) {
 
 function focusReleaseField(form, name) {
   const field = [...form.querySelectorAll(`[name="${name}"]`)].find((item) => !item.disabled);
-  field?.focus();
-  field?.scrollIntoView({ behavior: "smooth", block: "center" });
+  if (!field) return;
+  field.focus({ preventScroll: true });
+  const bounds = field.getBoundingClientRect();
+  if (bounds.top < 16 || bounds.bottom > window.innerHeight - 16) {
+    field.scrollIntoView({ behavior: "auto", block: "nearest" });
+  }
 }
 
 function releaseCheckpointInput(form) {

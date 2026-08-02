@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="FanMesh unifies consented fan relationships and turns them into useful audience intelligence.">
     <title>FanMesh — Own the relationship</title>
-    <link rel="stylesheet" href="/styles.css?v=0.18.3">
+    <link rel="stylesheet" href="/styles.css?v=0.18.4">
   </head>
   <body>
     <section class="auth-gate" id="auth-gate" aria-labelledby="auth-title" hidden>
@@ -429,7 +429,7 @@
                 <label class="check"><input type="checkbox" name="channels" value="sms"> SMS</label>
               </fieldset>
               <label>Measurement holdout<select name="holdoutPercent"><option value="0">No direct holdout</option><option value="5">5% holdout</option><option value="10" selected>10% holdout</option><option value="15">15% holdout</option></select></label>
-              <label class="activation-confirm"><input name="confirmedOwnedContent" type="checkbox"> I control this content and the selected creator accounts.</label>
+              <label class="activation-confirm" for="release-owned-confirm"><input id="release-owned-confirm" name="confirmedOwnedContent" type="checkbox"><span>I control this content and the selected creator accounts.</span></label>
               <p class="release-form-feedback" id="release-form-feedback" role="status" aria-live="polite"></p>
               <button class="button primary" type="submit">Build release plan ↗</button>
             </form>
@@ -522,6 +522,6 @@
       </main>
     </div>
     <div class="toast" role="status" aria-live="polite"></div>
-    <script src="/app.js?v=0.18.3" type="module"></script>
+    <script src="/app.js?v=0.18.4" type="module"></script>
   </body>
 </html>
