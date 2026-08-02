@@ -34,7 +34,7 @@ async function dispatch({ method = "GET", url = "/", body = "", headers = {}, ha
 test("health endpoint reports an operational service", async () => {
   const response = await dispatch({ url: "/api/health" });
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.17.0", database: "demo" });
+  assert.deepEqual(response.json(), { status: "ok", service: "fanmesh", version: "0.18.0", database: "demo" });
 });
 
 test("public legal pages explain FanMesh data and platform rules", async () => {
@@ -50,7 +50,7 @@ test("workspace navigation separates each product area into a routed view", asyn
   const response = await dispatch({ url: "/" });
   const html = Buffer.concat(response.chunks).toString("utf8");
   assert.equal(response.statusCode, 200);
-  for (const route of ["overview", "audience", "outreach", "organic", "reach-lab", "connections", "developer"]) {
+  for (const route of ["overview", "audience", "outreach", "organic", "reach-lab", "release", "connections", "developer"]) {
     assert.match(html, new RegExp(`href="#/${route}"`));
     assert.match(html, new RegExp(`data-page="${route}"`));
   }
@@ -441,6 +441,136 @@ test("content mesh endpoint is explicit about organic-only cross-platform analys
   assert.equal(body.meta.synced, false);
   assert.equal(body.meta.paidIncluded, false);
   assert.match(body.data.methodology, /own recent benchmark/i);
+});
+
+test("release command persists a Content Mesh plan and learns from an organic-only checkpoint", async () => {
+  let storedPlan;
+  const now = new Date();
+  const connectionStatuses = {
+    meta: {
+      status: "connected",
+      account: {
+        name: "Artist",
+        medianMetaReach: 200,
+        instagramAccounts: [{
+          username: "artist",
+          followers: 10000,
+          recentMedia: [{
+            id: "ig-release",
+            caption: "Midnight Drive official video",
+            permalink: "https://instagram.com/p/ig-release",
+            createdAt: now.toISOString(),
+            reach: 140,
+            totalInteractions: 20,
+          }],
+        }],
+      },
+    },
+    tiktok: {
+      status: "connected",
+      account: {
+        name: "Artist",
+        username: "artist",
+        followers: 12000,
+        medianViews: 300,
+        recentVideos: [{
+          id: "tt-release",
+          title: "Midnight Drive official video",
+          shareUrl: "https://tiktok.com/@artist/video/tt-release",
+          createdAt: now.toISOString(),
+          views: 90,
+          likes: 9,
+          comments: 2,
+          shares: 1,
+        }],
+      },
+    },
+  };
+  const workspaceStore = {
+    async getDashboard() {
+      return { connectionStatuses, fans: [], snapshot: {}, workspace: { id: "workspace-1" } };
+    },
+    async getActivationEligibility() {
+      return { identifiedFans: 1000, directConnections: 120, platformOnly: 880, channels: { email: 100, sms: 35 } };
+    },
+    async saveExperiment(user, token, plan) {
+      assert.equal(user.id, "user-1");
+      assert.equal(token, "token");
+      storedPlan = plan;
+      return { ...plan, databaseId: "release-row", status: "saved" };
+    },
+    async listReleasePlans() {
+      return storedPlan ? [{ ...storedPlan, databaseId: "release-row", status: storedPlan.status }] : [];
+    },
+    async getReleasePlan() {
+      return { ...storedPlan, databaseId: "release-row" };
+    },
+    async updateReleasePlan(user, token, databaseId, plan) {
+      assert.equal(databaseId, "release-row");
+      storedPlan = plan;
+      return { ...plan, databaseId };
+    },
+  };
+  const handler = createRequestHandler({
+    authService: {
+      config: { configured: true },
+      async session() {
+        return { data: { authenticated: true, accessToken: "token", user: { id: "user-1" } }, cookies: [] };
+      },
+    },
+    workspaceStore,
+    oauthService: { catalog() { return []; } },
+  });
+  const meshResponse = await dispatch({ url: "/api/v1/content-mesh", handler });
+  const mesh = meshResponse.json().data.content[0];
+  assert.deepEqual(mesh.platforms.sort(), ["instagram", "tiktok"]);
+  const createResponse = await dispatch({
+    method: "POST",
+    url: "/api/v1/releases/plan",
+    handler,
+    body: JSON.stringify({
+      meshId: mesh.id,
+      title: "Midnight Drive release",
+      releaseAt: new Date(Date.now() + 3600000).toISOString(),
+      objective: "discovery",
+      platforms: ["instagram", "tiktok"],
+      channels: ["email"],
+      holdoutPercent: 10,
+      confirmedOwnedContent: true,
+    }),
+  });
+  const created = createResponse.json();
+  assert.equal(createResponse.statusCode, 201);
+  assert.equal(created.data.kind, "release_plan_v1");
+  assert.equal(created.data.databaseId, "release-row");
+  assert.equal(created.data.status, "draft");
+  assert.equal(created.meta.messagesSent, 0);
+  assert.equal(created.meta.platformPostsPublished, 0);
+  assert.equal(created.data.audience.contactFieldsReturned, false);
+
+  const listResponse = await dispatch({ url: "/api/v1/releases", handler });
+  assert.equal(listResponse.statusCode, 200);
+  assert.equal(listResponse.json().data.length, 1);
+
+  const checkpointResponse = await dispatch({
+    method: "POST",
+    url: "/api/v1/releases/release-row/checkpoints",
+    handler,
+    body: JSON.stringify({
+      checkpoint: "24h",
+      confirmedOrganicOnly: true,
+      metrics: [
+        { platform: "instagram", currentReach: 240, interactions: 35 },
+        { platform: "tiktok", currentReach: 150, interactions: 24 },
+      ],
+    }),
+  });
+  const checkpoint = checkpointResponse.json();
+  assert.equal(checkpointResponse.statusCode, 200);
+  assert.equal(checkpoint.data.status, "active");
+  assert.equal(checkpoint.data.checkpoints[0].metrics[0].paidIncluded, false);
+  assert.equal(checkpoint.meta.contactFieldsReturned, false);
+  assert.match(checkpoint.data.learning.nextAction, /Rework the tiktok hook/i);
 });
 
 test("organic activation uses a recent authorized post and persists its pre-ad baseline", async () => {

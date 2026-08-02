@@ -9,6 +9,9 @@ let pendingImport = null;
 let pendingMetaLeadImport = null;
 let pendingIdentityImport = null;
 let organicPostRecords = [];
+let contentMeshRecords = [];
+let releasePlanRecords = [];
+let pendingReleaseMeshId = "";
 let pendingOutreachPlan = null;
 
 const APP_ROUTES = Object.freeze({
@@ -36,6 +39,11 @@ const APP_ROUTES = Object.freeze({
     breadcrumb: "Reach Lab",
     title: "See where the same content wins—or disappears.",
     description: "Match your content across platforms, find honest organic performance gaps, and choose the next native move.",
+  },
+  release: {
+    breadcrumb: "Release Command",
+    title: "Plan it. Release it. Learn what actually moved.",
+    description: "Turn one Content Mesh idea into native platform actions, a consent-safe audience step, and honest 24/72-hour learning.",
   },
   connections: {
     breadcrumb: "Connections",
@@ -848,6 +856,7 @@ function renderReachLab(mesh = {}) {
   const status = document.querySelector("#reach-lab-status");
   const method = document.querySelector("#reach-lab-method");
   const groups = Array.isArray(mesh.content) ? mesh.content : [];
+  contentMeshRecords = groups;
   const details = mesh.summary || {};
   summary.innerHTML = `
     <span><small>Organic posts</small><strong>${numberFormatter.format(details.postsAnalyzed || 0)}</strong></span>
@@ -859,6 +868,7 @@ function renderReachLab(mesh = {}) {
   method.textContent = mesh.methodology || "Waiting for authorized organic post signals from connected platforms.";
   if (!groups.length) {
     list.innerHTML = `<article class="organic-empty"><strong>No content to mesh yet</strong><p>Sync at least one creator platform. Cross-platform comparison begins automatically when matching titles or captions appear on two connected platforms.</p><button class="button secondary" type="button" data-route="connections">Open connections ↗</button></article>`;
+    renderReleaseBuilder();
     return;
   }
   list.innerHTML = groups.slice(0, 12).map((item) => {
@@ -877,8 +887,178 @@ function renderReachLab(mesh = {}) {
       <p class="reach-evidence">${escapeHtml(item.matchEvidence)}</p>
       <div class="reach-platforms">${comparisons}</div>
       <div class="reach-plan"><strong>Best next move</strong><ol>${(item.recommendations || []).map((recommendation) => `<li>${escapeHtml(recommendation)}</li>`).join("")}</ol></div>
+      <button class="button primary reach-build" type="button" data-release-mesh="${escapeHtml(item.id)}">Build measured release ↗</button>
     </article>`;
   }).join("");
+  renderReleaseBuilder();
+}
+
+function localDateTimeValue(value) {
+  const date = value ? new Date(value) : new Date(Date.now() + 3600000);
+  if (Number.isNaN(date.getTime())) return "";
+  const local = new Date(date.getTime() - (date.getTimezoneOffset() * 60000));
+  return local.toISOString().slice(0, 16);
+}
+
+function releaseTimeLabel(value) {
+  const date = new Date(value || "");
+  if (Number.isNaN(date.getTime())) return "Schedule pending";
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function renderReleaseBuilder(preferredId = pendingReleaseMeshId) {
+  const form = document.querySelector("#release-plan-form");
+  if (!form) return;
+  const select = form.elements.meshId;
+  const previous = preferredId || select.value;
+  select.innerHTML = contentMeshRecords.length
+    ? contentMeshRecords.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.title.slice(0, 90))} · ${numberFormatter.format(item.opportunityScore)} opportunity</option>`).join("")
+    : '<option value="">No synchronized content ideas yet</option>';
+  const selectedId = contentMeshRecords.some((item) => item.id === previous) ? previous : contentMeshRecords[0]?.id || "";
+  select.value = selectedId;
+  select.disabled = !selectedId;
+  const item = contentMeshRecords.find((entry) => entry.id === selectedId);
+  const changed = form.dataset.meshId !== selectedId;
+  form.dataset.meshId = selectedId;
+  if (changed) {
+    form.elements.title.value = item?.title || "";
+    form.elements.confirmedOwnedContent.checked = false;
+  }
+  if (!form.elements.releaseAt.value) form.elements.releaseAt.value = localDateTimeValue();
+  const available = new Set([...(item?.platforms || []), ...(item?.missingPlatforms || [])]);
+  [...form.querySelectorAll('input[name="platforms"]')].forEach((field) => {
+    field.disabled = !available.has(field.value);
+    if (changed) field.checked = available.has(field.value);
+  });
+  form.querySelector('button[type="submit"]').disabled = !item;
+  pendingReleaseMeshId = selectedId;
+}
+
+function checkpointMetricRows(plan) {
+  return (plan.platforms || []).map((item) => `
+    <div class="checkpoint-row" data-checkpoint-platform="${escapeHtml(item.platform)}">
+      <span class="organic-platform ${escapeHtml(item.platform)}">${escapeHtml(item.platform)}</span>
+      <label>${escapeHtml(item.baseline?.reachMetric || "views")}<input name="currentReach" type="number" min="0" step="1" required placeholder="${numberFormatter.format(item.baseline?.currentReach || 0)}"></label>
+      <label>Interactions<input name="interactions" type="number" min="0" step="1" value="0"></label>
+      <label>Link clicks<input name="linkClicks" type="number" min="0" step="1" value="0"></label>
+      <label>Conversions<input name="conversions" type="number" min="0" step="1" value="0"></label>
+    </div>`).join("");
+}
+
+function renderReleaseCommand(plan) {
+  const target = document.querySelector("#release-command-result");
+  if (!plan) {
+    target.innerHTML = '<div class="empty-sequence"><span class="sequence-icon">▶</span><h3>Your command plan will appear here</h3><p>FanMesh will show exactly what is scheduled, what remains manual, and how the result will be judged.</p></div>';
+    return;
+  }
+  const platforms = plan.platforms || [];
+  const nextCheckpoint = (plan.checkpoints || []).some((item) => item.checkpoint === "24h") ? "72h" : "24h";
+  const firstUrl = platforms.find((item) => item.baseline?.url)?.baseline?.url || "";
+  const timeline = (plan.schedule || []).map((item) => `<li><time>${escapeHtml(releaseTimeLabel(item.scheduledAt))}</time><span>${escapeHtml(item.action)}</span></li>`).join("");
+  const platformCards = platforms.map((item) => `
+    <article class="release-platform-card">
+      <header><span class="organic-platform ${escapeHtml(item.platform)}">${escapeHtml(item.platform)}</span><time>${escapeHtml(releaseTimeLabel(item.publishAt))}</time></header>
+      <small>${escapeHtml(item.guidance?.sourceState?.replaceAll("_", " ") || "native version")}</small>
+      <strong>${escapeHtml(item.guidance?.format || "Native platform version")}</strong>
+      <p>${escapeHtml(item.guidance?.hook || "Adapt the opening for this platform.")}</p>
+      <p>${escapeHtml(item.guidance?.followUp || "Measure before changing the creative.")}</p>
+    </article>`).join("");
+  target.innerHTML = `<div class="release-command">
+    <div class="release-command-heading"><div><p class="eyebrow">${escapeHtml(plan.id)}</p><h3>${escapeHtml(plan.title)}</h3></div><span class="status ${plan.status === "completed" || plan.status === "active" ? "good" : "warning"}">${escapeHtml(plan.status)}</span></div>
+    <p class="release-command-meta">Release ${escapeHtml(releaseTimeLabel(plan.releaseAt))} · ${escapeHtml(plan.objective)} · Primary metric: ${escapeHtml(plan.primaryMetric)}</p>
+    <div class="release-kpis">
+      <span><small>Platforms</small><strong>${numberFormatter.format(platforms.length)}</strong></span>
+      <span><small>Direct eligible</small><strong>${numberFormatter.format(plan.audience?.eligibleDirect || 0)}</strong></span>
+      <span><small>Holdout</small><strong>${numberFormatter.format(plan.audience?.heldOut || 0)}</strong></span>
+      <span><small>Checkpoints</small><strong>${numberFormatter.format((plan.checkpoints || []).length)}/2</strong></span>
+    </div>
+    <div class="release-platform-plan">${platformCards}</div>
+    <div class="release-timeline"><strong>Command timeline</strong><ol>${timeline}</ol></div>
+    <div class="release-learning"><strong>${escapeHtml(plan.learning?.state?.replaceAll("_", " ") || "Awaiting data")}</strong><p>${escapeHtml(plan.learning?.nextAction || "Record the first organic checkpoint after 24 hours.")}</p></div>
+    <div class="release-command-actions">
+      ${firstUrl ? `<a class="button secondary" href="${escapeHtml(firstUrl)}" target="_blank" rel="noopener noreferrer">Open source post ↗</a>` : ""}
+      <button class="button secondary" type="button" data-release-outreach="${escapeHtml(plan.databaseId || plan.id)}">Prepare consented outreach ↗</button>
+    </div>
+    ${plan.databaseId ? `<form class="checkpoint-form" data-release-checkpoint-form="${escapeHtml(plan.databaseId)}">
+      <div class="checkpoint-heading"><strong>Record an organic checkpoint</strong><label>Window<select name="checkpoint"><option value="24h" ${nextCheckpoint === "24h" ? "selected" : ""}>24 hours</option><option value="72h" ${nextCheckpoint === "72h" ? "selected" : ""}>72 hours</option></select></label></div>
+      <div class="checkpoint-metrics">${checkpointMetricRows(plan)}</div>
+      <textarea name="notes" maxlength="500" placeholder="What changed in the hook, format, audience response, or timing?"></textarea>
+      <label class="checkpoint-confirm"><input name="confirmedOrganicOnly" type="checkbox" required> These totals exclude paid ads, boosted delivery, and purchased traffic.</label>
+      <button class="button primary" type="submit">Save checkpoint and learn ↗</button>
+    </form>` : '<p class="guardrail"><strong>Demo preview:</strong> sign in to persist checkpoints.</p>'}
+    <p class="guardrail"><strong>Delivery truth:</strong> A release plan schedules human and permitted actions. FanMesh has not published, messaged followers, or changed a platform feed.</p>
+  </div>`;
+}
+
+function renderReleaseHistory(plans = releasePlanRecords) {
+  const list = document.querySelector("#release-plan-list");
+  const status = document.querySelector("#release-history-status");
+  status.className = `status ${plans.length ? "good" : "warning"}`;
+  status.textContent = plans.length ? `${numberFormatter.format(plans.length)} saved plans` : "No plans yet";
+  if (!plans.length) {
+    list.innerHTML = '<article class="organic-empty"><strong>No release history yet</strong><p>Build the first plan from a current Reach Lab idea. FanMesh will keep its checkpoints in your private workspace.</p></article>';
+    return;
+  }
+  list.innerHTML = plans.slice(0, 9).map((plan) => `
+    <article class="release-plan-card">
+      <header><span class="status ${plan.status === "completed" || plan.status === "active" ? "good" : "warning"}">${escapeHtml(plan.status)}</span><small>${escapeHtml(releaseTimeLabel(plan.releaseAt))}</small></header>
+      <h3>${escapeHtml(plan.title)}</h3>
+      <div class="release-platform-chips">${(plan.platforms || []).map((item) => `<span>${escapeHtml(item.platform)}</span>`).join("")}</div>
+      <p>${escapeHtml(plan.learning?.nextAction || "Awaiting the first organic checkpoint.")}</p>
+      <button class="button secondary" type="button" data-release-open="${escapeHtml(plan.databaseId || plan.id)}">Open command plan ↗</button>
+    </article>`).join("");
+}
+
+async function loadReleasePlans() {
+  try {
+    const response = await fetch("/api/v1/releases?limit=12");
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error?.message || "Release history unavailable");
+    releasePlanRecords = Array.isArray(body.data) ? body.data : [];
+    renderReleaseHistory();
+    if (releasePlanRecords.length && !document.querySelector("#release-command-result .release-command")) {
+      renderReleaseCommand(releasePlanRecords[0]);
+    }
+  } catch (error) {
+    document.querySelector("#release-history-status").textContent = "History unavailable";
+    document.querySelector("#release-plan-list").innerHTML = `<p class="loading">${escapeHtml(error.message)}</p>`;
+  }
+}
+
+function releasePlanInput(form) {
+  const data = new FormData(form);
+  const releaseAt = new Date(data.get("releaseAt"));
+  return {
+    meshId: data.get("meshId"),
+    title: data.get("title"),
+    releaseAt: Number.isNaN(releaseAt.getTime()) ? "" : releaseAt.toISOString(),
+    objective: data.get("objective"),
+    platforms: data.getAll("platforms"),
+    channels: data.getAll("channels"),
+    holdoutPercent: data.get("holdoutPercent"),
+    confirmedOwnedContent: data.get("confirmedOwnedContent") === "on",
+  };
+}
+
+function releaseCheckpointInput(form) {
+  const metrics = [...form.querySelectorAll("[data-checkpoint-platform]")].map((row) => ({
+    platform: row.dataset.checkpointPlatform,
+    currentReach: row.querySelector('[name="currentReach"]').value,
+    interactions: row.querySelector('[name="interactions"]').value,
+    linkClicks: row.querySelector('[name="linkClicks"]').value,
+    conversions: row.querySelector('[name="conversions"]').value,
+  }));
+  return {
+    checkpoint: form.elements.checkpoint.value,
+    metrics,
+    notes: form.elements.notes.value,
+    confirmedOrganicOnly: form.elements.confirmedOrganicOnly.checked,
+  };
 }
 
 function renderConnections(catalog) {
@@ -989,7 +1169,7 @@ async function runConnectionAction(action, platform, button) {
     });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error?.message || `${platform} ${action} failed`);
-    await loadDashboard();
+    await Promise.all([loadDashboard(), loadReleasePlans(), loadOutreachReadiness()]);
     showToast(disconnecting ? `${platform} disconnected.` : `${platform} data synced.`);
   } catch (error) {
     showToast(error.message);
@@ -1138,7 +1318,7 @@ async function bootstrapAccount() {
       return;
     }
     showAuthGate(false);
-    await Promise.all([loadDashboard(), loadOutreachReadiness()]);
+    await Promise.all([loadDashboard(), loadOutreachReadiness(), loadReleasePlans()]);
     handleOAuthReturn();
   } catch (error) {
     showAuthGate(true);
@@ -1189,6 +1369,38 @@ document.addEventListener("click", async (event) => {
 
   const organicButton = event.target.closest("[data-organic-activate]");
   if (organicButton) await activateOrganicPost(organicButton.dataset.organicActivate, organicButton);
+
+  const releaseMeshButton = event.target.closest("[data-release-mesh]");
+  if (releaseMeshButton) {
+    pendingReleaseMeshId = releaseMeshButton.dataset.releaseMesh;
+    renderReleaseBuilder(pendingReleaseMeshId);
+    navigateToRoute("release", "release-command");
+  }
+
+  const releaseOpenButton = event.target.closest("[data-release-open]");
+  if (releaseOpenButton) {
+    const plan = releasePlanRecords.find((item) => (item.databaseId || item.id) === releaseOpenButton.dataset.releaseOpen);
+    if (plan) {
+      renderReleaseCommand(plan);
+      navigateToRoute("release", "release-command");
+    }
+  }
+
+  const releaseOutreachButton = event.target.closest("[data-release-outreach]");
+  if (releaseOutreachButton) {
+    const plan = releasePlanRecords.find((item) => (item.databaseId || item.id) === releaseOutreachButton.dataset.releaseOutreach);
+    if (plan) {
+      const sourceUrl = plan.platforms?.find((item) => item.baseline?.url)?.baseline?.url || "";
+      const form = document.querySelector("#campaign-form");
+      form.elements.title.value = plan.title;
+      form.elements.contentUrl.value = sourceUrl;
+      form.elements.message.value = `${plan.title} is live. Here is the direct link:`.slice(0, 500);
+      form.elements.confirmedOwnedContent.checked = true;
+      form.elements.confirmedAudienceRights.checked = false;
+      navigateToRoute("outreach", "campaign");
+      showToast("Release details copied. Confirm audience rights before previewing outreach.");
+    }
+  }
 
   if (event.target.closest(".mobile-menu")) document.querySelector(".sidebar").classList.toggle("open");
   if (event.target.closest(".nav a")) document.querySelector(".sidebar").classList.remove("open");
@@ -1340,6 +1552,70 @@ async function activateOrganicPost(postKey, button) {
     button.textContent = original;
   }
 }
+
+document.querySelector("#release-plan-form").addEventListener("change", (event) => {
+  if (event.target.name !== "meshId") return;
+  pendingReleaseMeshId = event.target.value;
+  renderReleaseBuilder(pendingReleaseMeshId);
+});
+
+document.querySelector("#release-plan-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector('button[type="submit"]');
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = "Building command plan…";
+  try {
+    const response = await fetch("/api/v1/releases/plan", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(releasePlanInput(form)),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error?.message || "Release plan could not be created");
+    const plan = body.data;
+    releasePlanRecords = [plan, ...releasePlanRecords.filter((item) => item.databaseId !== plan.databaseId)];
+    renderReleaseCommand(plan);
+    renderReleaseHistory();
+    form.elements.confirmedOwnedContent.checked = false;
+    showToast("Release plan saved. Nothing was published or sent.");
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+});
+
+document.addEventListener("submit", async (event) => {
+  const form = event.target.closest("[data-release-checkpoint-form]");
+  if (!form) return;
+  event.preventDefault();
+  const databaseId = form.dataset.releaseCheckpointForm;
+  const button = form.querySelector('button[type="submit"]');
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = "Comparing with baseline…";
+  try {
+    const response = await fetch(`/api/v1/releases/${encodeURIComponent(databaseId)}/checkpoints`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(releaseCheckpointInput(form)),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error?.message || "Checkpoint could not be saved");
+    const plan = body.data;
+    releasePlanRecords = [plan, ...releasePlanRecords.filter((item) => item.databaseId !== plan.databaseId)];
+    renderReleaseCommand(plan);
+    renderReleaseHistory();
+    showToast(`${plan.checkpoints.at(-1)?.checkpoint || "Release"} checkpoint saved. The next recommendation is ready.`);
+  } catch (error) {
+    showToast(error.message);
+    button.disabled = false;
+    button.textContent = original;
+  }
+});
 
 document.querySelector("#campaign-form").addEventListener("change", (event) => {
   if (event.target.name === "confirmedSend") {
@@ -1791,7 +2067,7 @@ document.querySelector("#auth-form").addEventListener("submit", async (event) =>
     authState = body.data;
     form.reset();
     showAuthGate(false);
-    await loadDashboard();
+    await Promise.all([loadDashboard(), loadReleasePlans(), loadOutreachReadiness()]);
   } catch (error) {
     message.textContent = error.message;
   } finally {

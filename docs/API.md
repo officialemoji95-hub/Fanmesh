@@ -1,4 +1,4 @@
-# FanMesh API v0.15
+# FanMesh API v0.18
 
 The prototype serves JSON under `/api`. Responses use `{ "data": ... }` for successful resources and `{ "error": { "message": ... } }` for errors. When Supabase is configured, workspace endpoints require the secure creator session cookie and PostgreSQL row-level security isolates every workspace. When Supabase is unconfigured, dashboard reads use clearly labeled demo data.
 
@@ -76,7 +76,19 @@ Supported outreach provenance filters are `meta_ads`, `tiktok_ads`, `snapchat_ad
 
 ### `GET /api/v1/organic/posts`
 
-Requires a creator session. Returns up to 20 recent Instagram and TikTok posts from the latest authorized sync, ranked by an explainable organic-recovery opportunity score. Each record includes the current reach/view baseline, recent median benchmark, follower-coverage rate, real interaction rate, score components, and a public platform URL. The score is a prioritization aid, not a delivery prediction.
+Requires a creator session. Returns up to 20 recent Instagram, TikTok, YouTube, X, and Threads posts from the latest authorized sync, ranked by an explainable organic-recovery opportunity score. Each record includes the current reach/view baseline, recent benchmark, follower-coverage state when available, real interaction rate, score components, and a public platform URL. The score is a prioritization aid, not a delivery prediction.
+
+### `GET /api/v1/content-mesh`
+
+Requires a creator session. Matches authorized Instagram, TikTok, YouTube, X, and Threads posts by caption/title overlap inside a bounded publication window. Every version is indexed against that platform's own recent benchmark; raw cross-platform view totals and paid delivery are excluded.
+
+### Release Command
+
+- `GET /api/v1/releases?limit=10` lists private `release_plan_v1` records and their current learning state without contact fields.
+- `POST /api/v1/releases/plan` accepts a current `meshId`, release time, objective, connected platforms, optional email/SMS channels, holdout, and `confirmedOwnedContent: true`. It persists native instructions, captured baselines, the command timeline, and safe direct-audience counts. It publishes and sends nothing.
+- `POST /api/v1/releases/{databaseId}/checkpoints` accepts a `24h` or `72h` checkpoint, per-platform organic totals, optional click/conversion counts, notes, and `confirmedOrganicOnly: true`. It updates the plan with baseline deltas, own-platform benchmark indexes, strongest/weakest platform evidence, and the next native recommendation.
+
+Release Command re-resolves Content Mesh IDs against the latest authorized sync and isolates every read/write through the creator workspace. See [RELEASE-COMMAND.md](RELEASE-COMMAND.md).
 
 ### `POST /api/v1/organic/activate`
 
